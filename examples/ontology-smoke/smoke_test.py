@@ -24,7 +24,7 @@ def smoke(science_python: Path, output: Path | None = None):
             "--root", str(root), "--csv", str(csv)],
             capture_output=True, text=True, timeout=240)
     if seed.returncode:
-        raise RuntimeError(f"Real TeAL/GeCo creation failed:\\n{seed.stdout}\\n{seed.stderr}")
+        raise RuntimeError(f"Real TeAL/GeCo creation failed:\n{seed.stdout}\n{seed.stderr}")
     data = json.loads(seed.stdout.strip().splitlines()[-1])
     assert data["rows"] == 84 and data["workspaces"] == ["desktop"], data
     runtime = RuntimeSpec(f"{sys.version_info.major}.{sys.version_info.minor}",
@@ -64,4 +64,4 @@ if __name__ == "__main__":
     parser.add_argument("--science-python", type=Path, required=True)
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
-    smoke(args.science_python.resolve(), args.output)
+    smoke(args.science_python.absolute(), args.output)
