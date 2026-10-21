@@ -17,8 +17,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      SCIENCE_ENV: ${{ runner.temp }}/geco-science-env
-      OUTPUT_ROOT: ${{ runner.temp }}/geco-real-output
+      SCIENCE_ENV: /tmp/geco-science-env
+      OUTPUT_ROOT: /tmp/geco-real-output
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -45,7 +45,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: real-geco-smoke-project
-          path: ${{ runner.temp }}/geco-real-output/Relocated research.gecod/
+          path: /tmp/geco-real-output/Relocated research.gecod/
           include-hidden-files: true
           if-no-files-found: ignore
           retention-days: 7
