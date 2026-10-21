@@ -2,6 +2,8 @@ name: Real TeAL-GeCo smoke
 
 on:
   workflow_dispatch:
+  push:
+    branches: ["test/**"]
   pull_request:
     paths:
       - 'examples/ontology-smoke/**'
@@ -31,10 +33,13 @@ jobs:
         run: |
           uv python install 3.11
           uv venv --python 3.11 "$SCIENCE_ENV"
-          uv pip install --python "$SCIENCE_ENV/bin/python"             'git+https://github.com/zacthinks/GeCo.git@4fede56f1943b9c1f74c219ebe1785d266363822'             'git+https://github.com/zacthinks/text-analysis-lab.git@875834f8612294ec0b5f542de6059874363e230e'
+          uv pip install --python "$SCIENCE_ENV/bin/python" \
+            'git+https://github.com/zacthinks/GeCo.git@4fede56f1943b9c1f74c219ebe1785d266363822' \
+            'git+https://github.com/zacthinks/text-analysis-lab.git@875834f8612294ec0b5f542de6059874363e230e'
       - name: Run real TeAL-GeCo-Desktop end to end
         run: |
-          python -u examples/ontology-smoke/smoke_test.py             --science-python "$SCIENCE_ENV/bin/python" --output "$OUTPUT_ROOT"
+          python -u examples/ontology-smoke/smoke_test.py \
+            --science-python "$SCIENCE_ENV/bin/python" --output "$OUTPUT_ROOT"
       - name: Upload generated project
         if: always()
         uses: actions/upload-artifact@v4
