@@ -67,3 +67,50 @@ def test_project_commands_close_teal_even_after_errors(monkeypatch, tmp_path):
     (tmp_path / ".teal").mkdir()
     with pytest.raises(FileExistsError):
         runner.dispatch(request("create_teal", path=str(tmp_path), name="Test"))
+
+def test_serve_shutdown_marker_closes_project(tmp_path):
+    """Exercise the real detached-runner cooperative shutdown seam."""
+    import os
+    import time
+    from pathlib import Path
+
+    from geco_desktop.environments import installed_runner_path
+
+    fake_package = tmp_path / "text_analysis_lab.py"
+    closed = tmp_path / "closed.txt"
+    running = tmp_path / "running.txt"
+    fake_package.write_text(
+        "import time\n"
+        "from pathlib import Path\n"
+        "class Linked:\n"
+        "    def launch(self, **kwargs):\n"
+        f"        Path({str(running)!r}).write_text('ready')\n"
+        "        while True: time.sleep(0.1)\n"
+        "class Manager:\n"
+        "    def open(self, name): return Linked()\n"
+        "class Project:\n"
+        "    @classmethod\n"
+        "    def open(cls, path): return cls()\n"
+        "    def __init__(self): self.geco = Manager()\n"
+        f"    def close(self): Path({str(closed)!r}).write_text('closed')\n"
+    )
+    marker = tmp_path / "stop.marker"
+    env = {**os.environ, "PYTHONPATH": str(tmp_path)}
+    process = subprocess.Popen(
+        [sys.executable, str(installed_runner_path()), "--serve",
+         "--project", str(tmp_path), "--port", "8050", "--shutdown-file", str(marker)],
+        env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+    )
+    try:
+        deadline = time.monotonic() + 6
+        while not running.exists() and time.monotonic() < deadline:
+            assert process.poll() is None
+            time.sleep(0.05)
+        assert running.exists(), "mock GeCo server never started"
+        marker.touch()
+        assert process.wait(timeout=6) == 0
+        assert closed.read_text() == "closed"
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=3)
