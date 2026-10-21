@@ -121,7 +121,12 @@ class SessionManager:
         self.base.mkdir(parents=True, exist_ok=True)
         with FileLock(str(self.lock)):
             entries = self._read()
-            clean = {key: item for key, item in entries.items() if _ready(item)}
+            clean = {}
+            for key, item in entries.items():
+                state = _status(item)
+                if state != "stopped":
+                    item.status = state
+                    clean[key] = item
             if len(clean) != len(entries):
                 self._write(clean)
             return list(clean.values())
