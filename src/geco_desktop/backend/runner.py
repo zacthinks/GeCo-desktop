@@ -7,6 +7,9 @@ not installed into each immutable scientific environment and never imports Qt.
 from __future__ import annotations
 
 import argparse
+import _thread
+import threading
+import time
 import json
 import sys
 import traceback
@@ -65,15 +68,32 @@ def run_lines() -> int:
     return 0
 
 
-def serve(path: str, workspace: str, port: int) -> int:
+def serve(path: str, workspace: str, port: int, shutdown_file: str | None = None) -> int:
     from text_analysis_lab import Project
 
     project = Project.open(path)
+    complete = threading.Event()
+
+    def watch_shutdown() -> None:
+        if not shutdown_file:
+            return
+        marker = Path(shutdown_file)
+        while not complete.wait(0.15):
+            if marker.is_file():
+                _thread.interrupt_main()
+                return
+
+    watcher = threading.Thread(target=watch_shutdown, daemon=True)
+    watcher.start()
     try:
         linked = project.geco.open(workspace)
         linked.launch(host="127.0.0.1", port=port, debug=False, use_reloader=False)
         return 0
+    except KeyboardInterrupt:
+        return 0
     finally:
+        complete.set()
+        watcher.join(timeout=1)
         project.close()
 
 
@@ -83,11 +103,12 @@ def main() -> int:
     parser.add_argument("--project")
     parser.add_argument("--workspace", default="desktop")
     parser.add_argument("--port", type=int)
+    parser.add_argument("--shutdown-file")
     args = parser.parse_args()
     if args.serve:
         if not args.project or not args.port:
             parser.error("--serve requires --project and --port")
-        return serve(args.project, args.workspace, args.port)
+        return serve(args.project, args.workspace, args.port, args.shutdown_file)
     return run_lines()
 
 

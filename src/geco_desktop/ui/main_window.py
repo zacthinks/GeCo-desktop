@@ -141,9 +141,13 @@ class MainWindow(QMainWindow):
         self._background(work, completed)
 
     def refresh_sessions(self) -> None:
+        self._background(self.sessions.list, self._show_sessions)
+
+    def _show_sessions(self, sessions) -> None:
+        self._latest_sessions = sessions
         self.session_list.clear()
-        for session in self.sessions.list():
-            self.session_list.addItem(f"{session.project_name}  —  {session.project_path}")
+        for session in sessions:
+            self.session_list.addItem(f"{session.project_name} ({session.status})  —  {session.project_path}")
             self.session_list.item(self.session_list.count() - 1).setData(256, session.key)
 
     def _selected_key(self) -> str | None:
@@ -152,9 +156,12 @@ class MainWindow(QMainWindow):
 
     def open_session_browser(self) -> None:
         key = self._selected_key()
-        for session in self.sessions.list():
+        for session in getattr(self, "_latest_sessions", []):
             if session.key == key:
-                self.sessions.open_browser(session)
+                if session.status == "running":
+                    self.sessions.open_browser(session)
+                else:
+                    self.status.setText("GeCo session is alive but not responding yet.")
                 return
 
     def stop_session(self) -> None:

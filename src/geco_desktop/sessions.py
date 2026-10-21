@@ -8,6 +8,7 @@ import os
 import socket
 import subprocess
 import time
+import uuid
 import urllib.error
 import urllib.request
 import webbrowser
@@ -35,6 +36,7 @@ class ActiveSession:
     process_created: float
     port: int
     runner_path: str
+    shutdown_file: str = ""
     status: str = "running"
 
     @property
@@ -52,18 +54,34 @@ def _available_port() -> int:
         return int(sock.getsockname()[1])
 
 
-def _healthy(session: ActiveSession) -> bool:
+def _alive(session: ActiveSession) -> bool:
+    """Validate our exact child process, independently of HTTP responsiveness."""
     try:
         process = psutil.Process(session.pid)
-        if abs(process.create_time() - session.process_created) > 1.0 or not process.is_running():
+        if abs(process.create_time() - session.process_created) > 1.0:
+            return False
+        if not process.is_running() or process.status() == psutil.STATUS_ZOMBIE:
             return False
         cmdline = process.cmdline()
-        if session.runner_path not in cmdline or "--serve" not in cmdline:
-            return False
+        return session.runner_path in cmdline and "--serve" in cmdline
+    except (psutil.Error, OSError, ValueError):
+        return False
+
+
+def _ready(session: ActiveSession) -> bool:
+    if not _alive(session):
+        return False
+    try:
         with urllib.request.urlopen(session.url, timeout=0.35) as response:
             return 200 <= response.status < 500
-    except (psutil.Error, OSError, urllib.error.URLError, TimeoutError, ValueError):
+    except (OSError, urllib.error.URLError, TimeoutError, ValueError):
         return False
+
+
+def _status(session: ActiveSession) -> str:
+    if not _alive(session):
+        return "stopped"
+    return "running" if _ready(session) else "unresponsive"
 
 
 class SessionManager:
@@ -103,7 +121,7 @@ class SessionManager:
         self.base.mkdir(parents=True, exist_ok=True)
         with FileLock(str(self.lock)):
             entries = self._read()
-            clean = {key: item for key, item in entries.items() if _healthy(item)}
+            clean = {key: item for key, item in entries.items() if _ready(item)}
             if len(clean) != len(entries):
                 self._write(clean)
             return list(clean.values())
@@ -119,10 +137,11 @@ class SessionManager:
         with FileLock(str(self.lock)):
             sessions = self._read()
             existing = sessions.get(key)
-            if existing and _healthy(existing):
+            if existing and _alive(existing):
                 return existing
             sessions.pop(key, None)
             port = _available_port()
+            shutdown_file = self.base / ("stop-" + uuid.uuid4().hex)
             log_dir = self.base / "logs"
             log_dir.mkdir(exist_ok=True)
             flags = 0
@@ -131,6 +150,7 @@ class SessionManager:
             command = [
                 str(python), str(runner), "--serve", "--project", str(root),
                 "--workspace", descriptor.workspace_name, "--port", str(port),
+                "--shutdown-file", str(shutdown_file),
             ]
             with (log_dir / f"{key}.log").open("ab") as output:
                 process = subprocess.Popen(
@@ -143,7 +163,7 @@ class SessionManager:
                 key=key, project_id=descriptor.project_id, project_path=str(root),
                 project_name=descriptor.name, pid=process.pid,
                 process_created=psutil.Process(process.pid).create_time(),
-                port=port, runner_path=str(runner),
+                port=port, runner_path=str(runner), shutdown_file=str(shutdown_file),
             )
             sessions[key] = item
             self._write(sessions)
@@ -158,34 +178,44 @@ class SessionManager:
                     break
                 time.sleep(0.15)
             if process.poll() is None:
-                process.terminate()
+                shutdown_file.touch()
+                try:
+                    process.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    process.terminate()
                 try:
                     process.wait(timeout=3)
                 except subprocess.TimeoutExpired:
                     process.kill()
+            shutdown_file.unlink(missing_ok=True)
             sessions.pop(key, None)
             self._write(sessions)
             raise SessionError("GeCo server did not become ready; see the application log")
 
     def stop(self, key: str) -> None:
+        """Ask the owned runner to close TeAL cleanly before forced fallback."""
         self.base.mkdir(parents=True, exist_ok=True)
         with FileLock(str(self.lock)):
             sessions = self._read()
             entry = sessions.get(key)
             if not entry:
                 return
-            try:
+            if _alive(entry):
                 proc = psutil.Process(entry.pid)
-                if abs(proc.create_time() - entry.process_created) <= 1.0:
-                    args = proc.cmdline()
-                    if entry.runner_path in args and "--serve" in args:
-                        proc.terminate()
-                        try:
-                            proc.wait(timeout=4)
-                        except psutil.TimeoutExpired:
-                            proc.kill()
-            except psutil.Error:
-                pass
+                if entry.shutdown_file:
+                    Path(entry.shutdown_file).touch()
+                    try:
+                        proc.wait(timeout=5)
+                    except psutil.TimeoutExpired:
+                        pass
+                if _alive(entry):
+                    proc.terminate()
+                    try:
+                        proc.wait(timeout=4)
+                    except psutil.TimeoutExpired:
+                        proc.kill()
+            if entry.shutdown_file:
+                Path(entry.shutdown_file).unlink(missing_ok=True)
             del sessions[key]
             self._write(sessions)
 
