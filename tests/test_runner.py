@@ -72,8 +72,6 @@ def test_serve_shutdown_marker_closes_project(tmp_path):
     """Exercise the real detached-runner cooperative shutdown seam."""
     import os
     import time
-    from pathlib import Path
-
     from geco_desktop.environments import installed_runner_path
 
     fake_package = tmp_path / "text_analysis_lab.py"
