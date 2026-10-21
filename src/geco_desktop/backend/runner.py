@@ -6,10 +6,9 @@ not installed into each immutable scientific environment and never imports Qt.
 
 from __future__ import annotations
 
-import argparse
 import _thread
+import argparse
 import threading
-import time
 import json
 import sys
 import traceback
