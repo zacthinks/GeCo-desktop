@@ -1,0 +1,33 @@
+name: tests
+on:
+  push:
+    branches: [main, "feature/**"]
+  pull_request:
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: python -m pip install -e '.[dev]'
+      - name: Lint
+        run: ruff check src tests
+      - name: Test
+        run: pytest -q
+  gui-smoke:
+    runs-on: ubuntu-latest
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install GUI
+        run: python -m pip install -e '.[gui,dev]'
+      - name: Smoke import
+        run: python -c "from geco_desktop.ui.main_window import MainWindow; print(MainWindow.__name__)"
