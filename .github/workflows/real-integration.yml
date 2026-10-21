@@ -1,0 +1,46 @@
+name: Real TeAL-GeCo smoke
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'examples/ontology-smoke/**'
+      - '.github/workflows/real-integration.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  real-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SCIENCE_ENV: ${{ runner.temp }}/geco-science-env
+      OUTPUT_ROOT: ${{ runner.temp }}/geco-real-output
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          enable-cache: true
+      - name: Install Desktop host dependencies
+        run: python -m pip install -e .
+      - name: Create separate science interpreter and pinned stack
+        run: |
+          uv python install 3.11
+          uv venv --python 3.11 "$SCIENCE_ENV"
+          uv pip install --python "$SCIENCE_ENV/bin/python"             'git+https://github.com/zacthinks/GeCo.git@4fede56f1943b9c1f74c219ebe1785d266363822'             'git+https://github.com/zacthinks/text-analysis-lab.git@875834f8612294ec0b5f542de6059874363e230e'
+      - name: Run real TeAL-GeCo-Desktop end to end
+        run: |
+          python -u examples/ontology-smoke/smoke_test.py             --science-python "$SCIENCE_ENV/bin/python" --output "$OUTPUT_ROOT"
+      - name: Upload generated project
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: real-geco-smoke-project
+          path: ${{ runner.temp }}/geco-real-output/Relocated research.gecod/
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7
