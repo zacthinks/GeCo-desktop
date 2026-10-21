@@ -28,3 +28,11 @@ The UI currently opens existing `.gecod` project descriptors and shows active se
 ## Scope
 
 The first technical milestone validates the application/runner boundary and session lifecycle. It does not claim to have built the scientific preparation wizard or a Windows/macOS installer. The product will retain GeCo's green visual identity and use the existing GeCo browser interface rather than embedding it.
+
+## Contributing and security
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development and PR checks, and [SECURITY.md](SECURITY.md) for reporting security-sensitive issues.
+
+## License
+
+GeCo Desktop is licensed under the [MIT License](LICENSE). Copyright © 2026 Zachary Lim.

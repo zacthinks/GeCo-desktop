@@ -1,12 +1,19 @@
-name: tests
+name: Tests
+
 on:
   push:
-    branches: [main, "feature/**"]
+    branches: [main, "feature/**", "chore/**", "fix/**"]
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   unit:
+    name: unit
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -18,8 +25,11 @@ jobs:
         run: ruff check src tests
       - name: Test
         run: pytest -q
+
   gui-smoke:
+    name: gui-smoke
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     env:
       QT_QPA_PLATFORM: offscreen
     steps:
@@ -31,5 +41,71 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libegl1 libopengl0
       - name: Install GUI
         run: python -m pip install -e '.[gui,dev]'
-      - name: Smoke import
-        run: python -c "from geco_desktop.ui.main_window import MainWindow; print(MainWindow.__name__)"
+      - name: Check native widget construction
+        run: |
+          python -c "from PySide6.QtWidgets import QApplication; from geco_desktop.ui.main_window import MainWindow; app = QApplication([]); window = MainWindow(); assert window.windowTitle() == 'GeCo Desktop'; window.close()"
+
+  windows-smoke:
+    name: windows-smoke
+    runs-on: windows-latest
+    timeout-minutes: 25
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: python -m pip install -e '.[gui,dev]'
+      - name: Test
+        run: pytest -q
+      - name: Check native widget construction
+        run: |
+          python -c "from PySide6.QtWidgets import QApplication; from geco_desktop.ui.main_window import MainWindow; app = QApplication([]); window = MainWindow(); assert window.windowTitle() == 'GeCo Desktop'; window.close()"
+
+  macos-smoke:
+    name: macos-smoke
+    runs-on: macos-latest
+    timeout-minutes: 25
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: python -m pip install -e '.[gui,dev]'
+      - name: Test
+        run: pytest -q
+      - name: Check native widget construction
+        run: |
+          python -c "from PySide6.QtWidgets import QApplication; from geco_desktop.ui.main_window import MainWindow; app = QApplication([]); window = MainWindow(); assert window.windowTitle() == 'GeCo Desktop'; window.close()"
+
+  package:
+    name: package
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install packaging tools
+        run: python -m pip install build
+      - name: Build wheel
+        run: python -m build --wheel
+      - name: Verify backend runner and license are included
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+
+          wheels = list(Path("dist").glob("geco_desktop-*.whl"))
+          assert len(wheels) == 1, wheels
+          with ZipFile(wheels[0]) as wheel:
+              members = wheel.namelist()
+              assert any(name.endswith("geco_desktop/backend/runner.py") for name in members)
+              assert any("licenses/LICENSE" in name for name in members), members
+          PY

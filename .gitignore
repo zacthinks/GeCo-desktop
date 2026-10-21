@@ -1,0 +1,63 @@
+# Python build output
+__pycache__/
+*.py[cod]
+*.so
+*.pyd
+*.egg-info/
+build/
+dist/
+*.whl
+
+# Development environments and tools (not research project environments)
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+.pyright/
+
+# Native application builds and signing material
+*.dmg
+*.app/
+*.exe
+*.msi
+*.p12
+*.pfx
+*.pem
+*.key
+*.log
+
+# Research projects, local databases, data and numerical sidecars
+*.gecod
+*.teal/
+.teal/
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+*.npy
+*.npz
+*.joblib
+*.parquet
+*.arrow
+
+# Project-generated state and caches
+.cache/
+.local/
+models/
+logs/
+scratch/
+
+# IDE and OS metadata
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
