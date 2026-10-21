@@ -22,7 +22,7 @@ def build(root: Path, csv: Path):
             tr.TfidfTransformer(norm="l2"), counts, alias="tfidf")["output"]
         svd = project.translate(
             tr.SVD(n_components=2, random_state=42),
-            tfidf, alias="projection")["output"]
+            tfidf, alias={"output": "projection", "components": "svd_components"})["output"]
         project.geco.create(
             "desktop", documents=docs, text_field="text", geometry=tfidf,
             projections={"svd2": svd},
