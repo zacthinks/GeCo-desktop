@@ -8,9 +8,9 @@ import os
 import socket
 import subprocess
 import time
-import uuid
 import urllib.error
 import urllib.request
+import uuid
 import webbrowser
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -172,7 +172,7 @@ class SessionManager:
             # accidentally start a second writer against the same project.
             limit = time.monotonic() + wait_seconds
             while time.monotonic() < limit:
-                if _healthy(item):
+                if _ready(item):
                     return item
                 if process.poll() is not None:
                     break
