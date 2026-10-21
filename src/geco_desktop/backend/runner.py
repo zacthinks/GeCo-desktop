@@ -8,9 +8,9 @@ from __future__ import annotations
 
 import _thread
 import argparse
-import threading
 import json
 import sys
+import threading
 import traceback
 from pathlib import Path
 from typing import Any
