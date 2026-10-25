@@ -524,3 +524,55 @@ def finalize(
         )
         handle.close()
         return {"workspace": "desktop", "already_exists": False}
+
+def model_inventory() -> dict[str, Any]:
+    """Read shared Hugging Face snapshots using the installed Hub API."""
+    try:
+        from huggingface_hub import scan_cache_dir
+    except ImportError as exc:
+        raise RuntimeError(
+            "This scientific runtime lacks huggingface_hub. Use a compatible "
+            "model-enabled TeAL environment."
+        ) from exc
+    cache = scan_cache_dir()
+    models: list[dict[str, Any]] = []
+    for repo in sorted(cache.repos, key=lambda item: item.repo_id):
+        if repo.repo_type != "model":
+            continue
+        for revision in sorted(repo.revisions, key=lambda item: item.commit_hash):
+            models.append({
+                "model": repo.repo_id,
+                "revision": revision.commit_hash,
+                "size_bytes": int(revision.size_on_disk),
+                "snapshot_path": str(revision.snapshot_path),
+            })
+    return {"models": models, "warnings": [str(w) for w in cache.warnings]}
+
+
+def download_model(model: str, revision: str | None = None) -> dict[str, Any]:
+    """Cache an immutable snapshot without installing Python packages.
+
+    This fetches only model files; model execution remains wholly in TeAL.
+    """
+    if not model or not model.strip():
+        raise ValueError("Choose a Hugging Face model identifier.")
+    try:
+        from huggingface_hub import HfApi, snapshot_download
+    except ImportError as exc:
+        raise RuntimeError(
+            "Downloading requires huggingface_hub in this scientific runtime."
+        ) from exc
+    model = model.strip()
+    info = HfApi().model_info(model, revision=revision or None)
+    resolved = str(info.sha)
+    if not resolved or len(resolved) < 12:
+        raise RuntimeError("Hub did not provide a verifiable model revision.")
+    snapshot = snapshot_download(
+        repo_id=model, revision=resolved, repo_type="model"
+    )
+    return {
+        "model": model,
+        "revision": resolved,
+        "snapshot_path": str(snapshot),
+        "downloaded": True,
+    }
