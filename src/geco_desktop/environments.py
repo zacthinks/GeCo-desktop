@@ -118,6 +118,37 @@ class EnvironmentManager:
                     shutil.rmtree(staged)
         return self.locate(spec)
 
+    def list_profiles(self) -> list[dict[str, object]]:
+        """Inspect shared environments without loading or modifying scientific code."""
+        directory = self.base / "environments"
+        if not directory.is_dir():
+            return []
+        records: list[dict[str, object]] = []
+        for location in sorted(directory.iterdir()):
+            if not location.is_dir():
+                continue
+            manifest_path = location / "profile.json"
+            if not manifest_path.is_file():
+                records.append({"path": str(location), "state": "incomplete"})
+                continue
+            try:
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                spec = RuntimeSpec.from_dict(manifest["spec"])
+                profile = self.profile(spec)
+                valid = profile.path == location and profile.fingerprint == manifest["fingerprint"]
+                state = "ready" if valid and profile.python.is_file() else "incomplete"
+                records.append({
+                    "path": str(location),
+                    "state": state,
+                    "fingerprint": profile.fingerprint,
+                    "python": spec.python,
+                    "teal": spec.teal,
+                    "geco": spec.geco,
+                })
+            except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+                records.append({"path": str(location), "state": "invalid"})
+        return records
+
     def _uv(self, *args: str) -> None:
         result = subprocess.run(
             [str(self.uv), *args], capture_output=True, text=True, check=False
