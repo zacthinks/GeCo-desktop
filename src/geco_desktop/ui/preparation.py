@@ -396,8 +396,16 @@ class PreparationWindow(QDialog):
             _button("Apply to all rows", self.apply_operation),
             _button("Refresh artifacts", self.refresh_catalog),
         ))
-        self.table = QTableWidget()
-        layout.addWidget(self.table)
+        self.preview_tabs = QTabWidget()
+        self.before_table = QTableWidget()
+        self.after_table = QTableWidget()
+        self.preview_tabs.addTab(self.before_table, "Before")
+        self.preview_tabs.addTab(self.after_table, "After")
+        layout.addWidget(self.preview_tabs)
+        self.preview_summary = QLabel("Previews are samples, not full-corpus statistics.")
+        self.preview_summary.setWordWrap(True)
+        layout.addWidget(self.preview_summary)
+        self.table = self.before_table
         self.tabs.addTab(page, "3 · Prepare")
         self._update_parameters()
 
@@ -445,15 +453,22 @@ class PreparationWindow(QDialog):
     def _artifact(self, identifier: Any) -> dict | None:
         return next((x for x in self.artifacts if x["id"] == str(identifier)), None)
 
-    def _present_rows(self, columns: list[str], rows: list[dict]) -> None:
-        self.table.clear()
-        self.table.setColumnCount(len(columns))
-        self.table.setHorizontalHeaderLabels(columns)
-        self.table.setRowCount(len(rows))
+    def _present_table(
+        self, table: QTableWidget, columns: list[str], rows: list[dict]
+    ) -> None:
+        table.clear()
+        table.setColumnCount(len(columns))
+        table.setHorizontalHeaderLabels(columns)
+        table.setRowCount(len(rows))
         for i, row in enumerate(rows):
             for j, column in enumerate(columns):
-                self.table.setItem(i, j, QTableWidgetItem(str(row.get(column, ""))))
-        self.table.resizeColumnsToContents()
+                table.setItem(i, j, QTableWidgetItem(str(row.get(column, ""))))
+        table.resizeColumnsToContents()
+
+    def _present_rows(self, columns: list[str], rows: list[dict]) -> None:
+        self._present_table(self.before_table, columns, rows)
+        self.preview_tabs.setCurrentWidget(self.before_table)
+        self.preview_summary.setText("Source preview only; no changes saved.")
 
     def show_preview(self, random: bool) -> None:
         identifier = str(self.source.currentData() or "")
@@ -475,10 +490,16 @@ class PreparationWindow(QDialog):
         options = self._options()
         root = str(self.root)
         def done(result):
-            rows = result.get("before", [])
-            cols = list(rows[0]) if rows else []
-            self._present_rows(cols, rows)
-            self.status.setText(f"Try-only, no durable artifact created. {str(result.get('after'))[:900]}")
+            self._present_rows(result["before_columns"], result["before_rows"])
+            self._present_table(
+                self.after_table, result["after_columns"], result["after_rows"]
+            )
+            self.preview_tabs.setCurrentWidget(self.after_table)
+            self.preview_summary.setText(
+                f"Sample only: {result['source_rows']} source rows → "
+                f"{result['candidate_rows']} candidate rows. No changes saved."
+            )
+            self.status.setText(result["sampling"])
         self._run(lambda: self._command(
             "preview_step", path=root, artifact_id=identifier, kind=kind,
             field=field, options=options,
