@@ -46,6 +46,9 @@ def build(output: Path, *, uv: str | None = None) -> None:
         bundled = output / "GeCo Desktop" / "_internal"
         bundled.mkdir(parents=True, exist_ok=True)
         shutil.copy2(uv_path, bundled / "uv.exe")
+        if not (bundled / "uv.exe").is_file():
+            raise RuntimeError(f"Missing provisioner after Windows packaging: {bundled}")
+        print("Windows provisioner:", bundled / "uv.exe", "size:", (bundled / "uv.exe").stat().st_size)
     print("Created native application in", output)
     print("Platform:", platform.system(), platform.machine())
 
