@@ -129,7 +129,10 @@ class PreparationWindow(QDialog):
             self.project_name.setText(descriptor.name)
             self.destination.setText(str(root.parent))
             self._set_existing()
-            self.refresh_catalog()
+            if (root / ".teal").is_dir():
+                self.refresh_catalog()
+            else:
+                self.status.setText("Project was interrupted before TeAL initialization. Use Initialize missing TeAL state.")
 
     def _run(self, function, completed, *, message: str) -> None:
         self.status.setText(message)
