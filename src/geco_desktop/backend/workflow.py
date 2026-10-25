@@ -392,6 +392,10 @@ def _translator(kind: str, field: str, options: Mapping[str, Any]) -> Any:
             n_neighbors=int(options.get("n_neighbors", 15)),
             min_dist=float(options.get("min_dist", 0.1)),
             random_state=int(options.get("random_state", 42)),
+            # GeCo needs text-to-geometry replay after linking. Reuse TeAL's
+            # compact persisted estimator instead of keeping a fit-only view.
+            reuse="stored",
+            storage="compact",
         )
     raise ValueError(f"Unsupported preparation operation {kind!r}")
 
