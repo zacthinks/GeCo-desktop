@@ -40,10 +40,17 @@ jobs:
           root = Path("dist-native")
           runners = list(root.rglob("backend/runner.py"))
           workflows = list(root.rglob("backend/workflow.py"))
-          uv = [p for p in root.rglob("*") if p.is_file() and p.name in ("uv", "uv.exe")]
+          import os
+          # Test the documented resource path, not a broad recursive file walk.
+          # Windows GitHub runners can return surprising case-sensitive glob results.
+          windows_uv = root / "GeCo Desktop" / "_internal" / "uv.exe"
+          uv = (
+              windows_uv.is_file() if os.name == "nt"
+              else any(p.is_file() for p in root.rglob("uv"))
+          )
           assert runners, "Missing app runner resource"
           assert workflows, "Missing workflow resource"
-          assert uv, "Missing uv binary"
+          assert uv, f"Missing uv binary at expected frozen resource location: {windows_uv}"
       - name: Archive native application
         run: python packaging/archive.py --source dist-native --destination native-artifacts
       - name: Upload native application archive for future manual acceptance
