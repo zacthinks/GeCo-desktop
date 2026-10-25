@@ -92,6 +92,8 @@ def _fill_combo(combo: QComboBox, entries: list[dict], *, empty: str | None = No
 class PreparationWindow(QDialog):
     """Guided stateful interface; restart reopens TeAL artifacts, not a parallel DAG."""
 
+    project_created = Signal(str)
+
     def __init__(
         self,
         environments: EnvironmentManager,
@@ -208,6 +210,7 @@ class PreparationWindow(QDialog):
 
         def finished(value):
             self.root, self.descriptor, self.interpreter = value
+            self.project_created.emit(str(self.root))
             self._set_existing()
             self.status.setText(f"Project created: {self.root}")
             self.tabs.setCurrentIndex(1)
