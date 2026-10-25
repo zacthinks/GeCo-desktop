@@ -63,6 +63,7 @@ class MainWindow(QMainWindow):
         self.sessions = SessionManager()
         self.pool = QThreadPool.globalInstance()
         self._tasks: list[_Task] = []
+        self._preparation = None
 
         holder = QWidget()
         layout = QVBoxLayout(holder)
@@ -77,6 +78,10 @@ class MainWindow(QMainWindow):
         home_layout = QVBoxLayout(home)
         self.status = QLabel("Open a GeCo Desktop project to launch its coding workspace.")
         home_layout.addWidget(self.status)
+        create = QPushButton("New project…")
+        create.setObjectName("primary")
+        create.clicked.connect(self.new_project)
+        home_layout.addWidget(create)
         browse = QPushButton("Open project…")
         browse.setObjectName("primary")
         browse.clicked.connect(self.open_project)
@@ -119,9 +124,16 @@ class MainWindow(QMainWindow):
         self.status.setText("Could not open project.")
         QMessageBox.warning(self, "GeCo Desktop", message)
 
+    def new_project(self) -> None:
+        from .preparation import PreparationWindow
+
+        # Keep the window alive when opening it non-modally.
+        self._preparation = PreparationWindow(self.environments, self.sessions, parent=self)
+        self._preparation.show()
+
     def open_project(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
-            self, "Open GeCo Desktop project", "", "GeCo projects (project.gecod *.gecod)"
+            self, "Open GeCo Desktop project", "", "GeCo project (project.gecod)"
         )
         if not path:
             return
@@ -130,10 +142,24 @@ class MainWindow(QMainWindow):
         def work():
             root, descriptor = read_descriptor(Path(path))
             interpreter = self.environments.locate(descriptor.runtime)
+            if descriptor.state == "preparing":
+                return root, descriptor, interpreter, None
             session = self.sessions.start(root, descriptor, interpreter)
-            return session
+            return root, descriptor, interpreter, session
 
-        def completed(session):
+        def completed(data):
+            root, descriptor, interpreter, session = data
+            if session is None:
+                from .preparation import PreparationWindow
+
+                self._preparation = PreparationWindow(
+                    self.environments, self.sessions,
+                    root=root, descriptor=descriptor,
+                    interpreter=interpreter, parent=self,
+                )
+                self._preparation.show()
+                self.status.setText(f"Resumed preparation: {descriptor.name}")
+                return
             self.status.setText(f"Running: {session.project_name}")
             self.sessions.open_browser(session)
             self.refresh_sessions()
