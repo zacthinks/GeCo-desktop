@@ -120,7 +120,7 @@ class EnvironmentManager:
             raise EnvironmentError(f"uv installation failed: {result.stderr.strip()[-2000:]}")
 
 
-def run_command(python: Path, runner: Path, action: str, **kwargs: object) -> dict:
+def run_command(python: Path, runner: Path, action: str, *, timeout: int = 90, **kwargs: object) -> dict:
     """Invoke an app-owned runner with a scientific environment interpreter."""
     from .protocol import decode, encode, request
 
@@ -129,7 +129,7 @@ def run_command(python: Path, runner: Path, action: str, **kwargs: object) -> di
         input=encode(request(action, **kwargs)),
         capture_output=True,
         text=True,
-        timeout=90,
+        timeout=timeout,
         check=False,
     )
     lines = [line for line in result.stdout.splitlines() if line.strip()]
