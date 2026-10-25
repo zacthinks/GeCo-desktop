@@ -35,7 +35,7 @@ from geco_desktop.environments import (
     run_command,
     runtime_with_features,
 )
-from geco_desktop.project import ProjectDescriptor, RuntimeSpec, write_descriptor
+from geco_desktop.project import ProjectDescriptor, write_descriptor
 from geco_desktop.sessions import SessionManager
 
 
@@ -256,7 +256,7 @@ class PreparationWindow(QDialog):
             ("spacy", self.spacy_feature),
         ):
             widget.setChecked(
-                any(f"text-analysis-lab[" in requirement
+                any("text-analysis-lab[" in requirement
                     and name in requirement.split("[", 1)[1].split("]", 1)[0].split(",")
                     for requirement in self.descriptor.runtime.locked_packages)
                 if self.descriptor else False
