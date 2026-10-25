@@ -181,3 +181,54 @@ def test_preview_tables_allow_empty_pattern_component():
     )
     assert result["source_rows"] == 1
     assert result["candidate_rows"] == 1
+
+def test_catalog_preserves_true_matrix_dimensions_without_listing_all_features(monkeypatch):
+    import sys
+    import types
+    from geco_desktop.backend import workflow
+
+    class Matrix:
+        artifact_id = "geom-id"
+        artifact_type = types.SimpleNamespace(value="dense_matrix")
+        n_rows = 5
+        primary_key = ("row",)
+
+        def get_data_columns(self):
+            return [f"dim_{i}" for i in range(312)]
+
+    class FakeProject:
+        @classmethod
+        def open(cls, path):
+            return cls()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def list_artifacts(self):
+            return [{
+                "artifact_id": "geom-id", "aliases": ["projected"],
+                "status": "complete", "lineage_mode": "preserved_key",
+                "source_artifact_id": "source-id",
+            }]
+
+        def get_artifact(self, identifier):
+            assert identifier == "geom-id"
+            return Matrix()
+
+        def list_operations(self):
+            return []
+
+        geco = types.SimpleNamespace(list=lambda: [])
+
+    monkeypatch.setitem(
+        sys.modules, "text_analysis_lab", types.SimpleNamespace(Project=FakeProject)
+    )
+    result = workflow.catalog("some-project")
+    artifact = result["artifacts"][0]
+    assert artifact["dimensions"] == 312
+    assert len(artifact["data_fields"]) == 250
+    assert artifact["source_artifact_id"] == "source-id"
+    assert artifact["aliases"] == ["projected"]
