@@ -53,10 +53,24 @@ jobs:
           assert uv, f"Missing uv binary at expected frozen resource location: {windows_uv}"
       - name: Archive native application
         run: python packaging/archive.py --source dist-native --destination native-artifacts
-      - name: Upload native application archive for future manual acceptance
+      - name: Install Inno Setup for Windows
+        if: runner.os == 'Windows'
+        run: choco install innosetup --yes --no-progress
+      - name: Build Windows per-user installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          & "${env:ProgramFiles(x86)}\\Inno Setup 6\\ISCC.exe" "packaging\\windows.iss"
+          if (-not (Test-Path "native-installers\\GeCoDesktop-Windows-Setup.exe")) { throw "Windows installer missing" }
+      - name: Build macOS DMG
+        if: runner.os == 'macOS'
+        run: python packaging/macos_dmg.py --source dist-native --output native-installers
+      - name: Upload native app and test installer
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: native-artifacts/*
+          path: |
+            native-artifacts/*
+            native-installers/*
           if-no-files-found: error
           retention-days: 7
