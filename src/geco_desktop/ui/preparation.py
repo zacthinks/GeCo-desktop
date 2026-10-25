@@ -125,6 +125,11 @@ class PreparationWindow(QDialog):
         self._import_page()
         self._prepare_page()
         self._final_page()
+        self.interrupted = QComboBox()
+        self.interrupted.addItem("No interrupted TeAL translations", "")
+        self.resume_button = _button("Resume selected TeAL operation", self.resume_teal_operation)
+        self.resume_button.setEnabled(False)
+        layout.addWidget(_row(self.interrupted, self.resume_button))
         self.status = QLabel("Choose a destination and a supported scientific runtime.")
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
@@ -573,6 +578,17 @@ class PreparationWindow(QDialog):
 
         def done(data):
             self.artifacts = data["artifacts"]
+            self.interrupted.clear()
+            operations = data.get("interrupted_operations", [])
+            for operation in operations:
+                label = (
+                    f"{operation['operation_id']} — {operation['operation_type']} "
+                    f"({operation['status']})"
+                )
+                self.interrupted.addItem(label, operation["operation_id"])
+            if not operations:
+                self.interrupted.addItem("No interrupted TeAL translations", "")
+            self.resume_button.setEnabled(bool(operations))
             self.status.setText(f"{len(self.artifacts)} saved TeAL artifacts. {len(data['workspaces'])} linked GeCo workspace(s).")
             table = [a for a in self.artifacts if a["type"] in {"table", "jsonl"}]
             matrices = [a for a in self.artifacts if a["type"] in {"dense_matrix", "sparse_matrix"}]
@@ -591,6 +607,31 @@ class PreparationWindow(QDialog):
 
         self._run(lambda: self._command("catalog", path=str(self.root)),
                   done, message="Loading TeAL artifact catalog…")
+
+    def resume_teal_operation(self) -> None:
+        """Ask TeAL to restore its persisted operation, without rebuilding its steps."""
+        if self.root is None or self.interpreter is None:
+            return
+        operation_id = str(self.interrupted.currentData() or "")
+        if not operation_id:
+            return
+        root = str(self.root)
+
+        def done(result):
+            self.status.setText(
+                f"TeAL resumed {result['operation_id']} and restored "
+                f"{len(result['outputs'])} output artifact(s)."
+            )
+            self.refresh_catalog()
+
+        self._run(
+            lambda: self._command(
+                "resume_operation", timeout=3600,
+                path=root, operation_id=operation_id,
+            ),
+            done,
+            message=f"Asking TeAL to resume operation {operation_id}…",
+        )
 
     def finalize_project(self) -> None:
         if self.root is None or self.descriptor is None:
