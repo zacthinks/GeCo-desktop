@@ -77,6 +77,7 @@ def test_pattern_preview_is_not_committed(monkeypatch):
 
     class FakeArtifact:
         artifact_type = types.SimpleNamespace(value="table")
+        n_rows = 1
 
         def sample(self, **kwargs):
             calls.append(("sample", kwargs))
