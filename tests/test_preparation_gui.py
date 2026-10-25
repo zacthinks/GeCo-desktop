@@ -15,11 +15,12 @@ def test_native_wizard_can_construct_and_switch_parameter_sections(tmp_path):
     wizard = PreparationWindow(Stub(), Stub())
     try:
         assert wizard.tabs.count() == 4
-        assert wizard.operation.count() == 7
+        assert wizard.operation.count() == 9
         for index in range(wizard.operation.count()):
             wizard.operation.setCurrentIndex(index)
             assert wizard.operation.currentData() in {
-                "clean", "pattern", "split", "count", "tfidf", "svd", "umap"
+                "clean", "pattern", "split", "count", "tfidf", "svd", "umap",
+                "sentence_embeddings", "spacy"
             }
         assert wizard.windowTitle() == "Prepare a GeCo project"
     finally:
