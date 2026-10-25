@@ -143,3 +143,41 @@ def test_pattern_preview_is_not_committed(monkeypatch):
 def test_package_contains_current_workflow_resource():
     from pathlib import Path
     assert Path(runner.__file__).with_name("workflow.py").is_file()
+
+
+def test_preview_tables_preserve_source_alignment_and_split_lineage():
+    original = [{"text": "A: hello"}, {"text": "B: hi"}]
+    capture = workflow._preview_tables(
+        "pattern", original,
+        {"data": [{"utterance": "hello"}, {"utterance": "hi"}],
+         "metadata": [{"speaker": "A"}, {"speaker": "B"}]},
+        field="text", options={},
+    )
+    assert capture["after_columns"] == ["utterance", "metadata.speaker"]
+    assert capture["after_rows"][1]["metadata.speaker"] == "B"
+    assert capture["sample_only"] is True
+    split = workflow._preview_tables(
+        "split", original,
+        {"source_positions": [0, 0, 1], "segment_ids": [0, 1, 0],
+         "texts": ["A", "hello", "B: hi"]},
+        field="text", options={"new_key": "segment"},
+    )
+    assert split["candidate_rows"] == 3
+    assert split["after_rows"][1] == {
+        "source_row": 1, "segment": 1, "text": "hello"
+    }
+    with pytest.raises(ValueError, match="aligned"):
+        workflow._preview_tables(
+            "split", original,
+            {"source_positions": [0, 1], "segment_ids": [0], "texts": ["a"]},
+            field="text", options={},
+        )
+
+
+def test_preview_tables_allow_empty_pattern_component():
+    result = workflow._preview_tables(
+        "pattern", [{"text": "nomatch"}], {"data": [], "metadata": []},
+        field="text", options={},
+    )
+    assert result["source_rows"] == 1
+    assert result["candidate_rows"] == 1
