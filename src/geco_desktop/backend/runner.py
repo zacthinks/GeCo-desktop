@@ -7,6 +7,7 @@ not installed into each immutable scientific environment and never imports Qt.
 from __future__ import annotations
 
 import _thread
+import importlib.util
 import argparse
 import json
 import sys
@@ -36,6 +37,18 @@ def dispatch(message: dict[str, Any]) -> dict[str, Any]:
             return {"project_path": str(project.path), "workspaces": workspaces}
         finally:
             project.close()
+    if action in {"csv_schema", "catalog", "import_csv", "preview", "preview_step", "apply_step", "finalize"}:
+        # This sibling resource ships with the current installed Desktop runner,
+        # not as a package added to an immutable TeAL scientific environment.
+        resource = Path(__file__).with_name("workflow.py")
+        if not resource.is_file():
+            raise FileNotFoundError(f"Desktop workflow resource missing: {resource}")
+        module_spec = importlib.util.spec_from_file_location("_geco_desktop_workflow", resource)
+        if module_spec is None or module_spec.loader is None:
+            raise RuntimeError("Unable to load Desktop workflow resource.")
+        workflow = importlib.util.module_from_spec(module_spec)
+        module_spec.loader.exec_module(workflow)
+        return getattr(workflow, action)(**args)
     if action == "create_teal":
         from text_analysis_lab import Project
 
