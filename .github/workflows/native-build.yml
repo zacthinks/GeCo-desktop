@@ -1,0 +1,54 @@
+name: Native application builds
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'packaging/**'
+      - 'src/geco_desktop/environments.py'
+      - '.github/workflows/native-build.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact: geco-desktop-windows
+          - os: macos-latest
+            artifact: geco-desktop-macos
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: astral-sh/setup-uv@v6
+      - name: Install GUI and native builder
+        run: python -m pip install -e ".[gui]" "pyinstaller>=6.10,<7"
+      - name: Build standalone GUI
+        run: python packaging/build.py --output dist-native
+      - name: Validate bundled runner resources
+        shell: python
+        run: |
+          from pathlib import Path
+          root = Path("dist-native")
+          runners = list(root.rglob("backend/runner.py"))
+          workflows = list(root.rglob("backend/workflow.py"))
+          uv = [p for p in root.rglob("*") if p.is_file() and p.name in ("uv", "uv.exe")]
+          assert runners, "Missing app runner resource"
+          assert workflows, "Missing workflow resource"
+          assert uv, "Missing uv binary"
+      - name: Upload runnable application for future manual acceptance
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist-native/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
