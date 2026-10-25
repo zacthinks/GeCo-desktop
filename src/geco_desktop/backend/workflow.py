@@ -311,6 +311,25 @@ def _translator(kind: str, field: str, options: Mapping[str, Any]) -> Any:
             strip=bool(options.get("strip", True)),
             drop_empty=bool(options.get("drop_empty", True)),
         )
+    if kind == "sentence_embeddings":
+        if not str(options.get("model") or "").strip():
+            raise ValueError("Specify a SentenceTransformers model identifier.")
+        return tr.SentenceTransformerEncoder(
+            model=str(options["model"]).strip(),
+            text_field=field,
+            revision=str(options.get("revision") or "").strip() or None,
+            normalize=str(options.get("normalize", "false")).lower() == "true",
+            truncation=str(options.get("truncation") or "error"),
+            max_length=int(options["max_length"]) if str(options.get("max_length") or "").strip() else None,
+            trust_remote_code=False,
+            save_model=False,
+        )
+    if kind == "spacy":
+        return tr.SpacyTranslator(
+            model=str(options.get("spacy_model") or "en_core_web_sm"),
+            text_field=field,
+            save_model=False,
+        )
     if kind == "count":
         return tr.CountVectorizer(
             text_field=field,
@@ -403,6 +422,8 @@ def apply_step(
                 "output": alias,
                 "components": f"{alias}_components",
             }
+        elif kind == "spacy":
+            aliases = {"sentences": f"{alias}_sentences", "tokens": f"{alias}_tokens"}
         else:
             aliases = alias
         result = project.translate(translator, source, alias=aliases)
