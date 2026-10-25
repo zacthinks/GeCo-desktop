@@ -39,6 +39,13 @@ def build(output: Path, *, uv: str | None = None) -> None:
         str(entry),
     ]
     subprocess.run(command, check=True)
+    # Some Windows PyInstaller versions classify the uv launcher as an external
+    # executable and omit it from the bundle despite --add-binary. Explicitly
+    # publish the exact binary at the frozen resource lookup path.
+    if os.name == "nt":
+        bundled = output / "GeCo Desktop" / "_internal"
+        bundled.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(uv_path, bundled / "uv.exe")
     print("Created native application in", output)
     print("Platform:", platform.system(), platform.machine())
 
