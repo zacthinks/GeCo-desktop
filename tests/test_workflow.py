@@ -185,6 +185,7 @@ def test_preview_tables_allow_empty_pattern_component():
 def test_catalog_preserves_true_matrix_dimensions_without_listing_all_features(monkeypatch):
     import sys
     import types
+
     from geco_desktop.backend import workflow
 
     class Matrix:
