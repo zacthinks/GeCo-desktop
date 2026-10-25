@@ -9,7 +9,7 @@ import pytest
 from geco_desktop.backend import workflow
 
 
-def test_model_inventory_only_reports_models(monkeypatch):
+def test_model_inventory_only_reports_models(monkeypatch, tmp_path):
     first = types.SimpleNamespace(
         repo_type="model", repo_id="org/encoder",
         revisions=[types.SimpleNamespace(
@@ -20,6 +20,7 @@ def test_model_inventory_only_reports_models(monkeypatch):
     second = types.SimpleNamespace(repo_type="dataset", repo_id="org/data", revisions=[])
     monkeypatch.setitem(sys.modules, "huggingface_hub", types.SimpleNamespace(
         scan_cache_dir=lambda: types.SimpleNamespace(repos=[second, first], warnings=[]),
+        constants=types.SimpleNamespace(HF_HUB_CACHE=str(tmp_path)),
     ))
     result = workflow.model_inventory()
     assert result["models"] == [{
@@ -53,12 +54,22 @@ def test_model_download_uses_resolved_immutable_commit(monkeypatch):
         workflow.download_model("")
 
 
-def test_runner_model_actions_do_not_require_qt(monkeypatch):
+def test_runner_model_actions_do_not_require_qt(monkeypatch, tmp_path):
     from geco_desktop.backend import runner
     from geco_desktop.protocol import request
 
     monkeypatch.setitem(sys.modules, "huggingface_hub", types.SimpleNamespace(
         scan_cache_dir=lambda: types.SimpleNamespace(repos=[], warnings=[]),
+        constants=types.SimpleNamespace(HF_HUB_CACHE=str(tmp_path)),
     ))
     result = runner.dispatch(request("model_inventory"))
     assert result == {"models": [], "warnings": []}
+
+
+def test_model_inventory_first_use_empty_cache(monkeypatch, tmp_path):
+    cache = tmp_path / "never-created"
+    monkeypatch.setitem(sys.modules, "huggingface_hub", types.SimpleNamespace(
+        constants=types.SimpleNamespace(HF_HUB_CACHE=str(cache)),
+        scan_cache_dir=lambda: (_ for _ in ()).throw(AssertionError("scanned absent cache")),
+    ))
+    assert workflow.model_inventory() == {"models": [], "warnings": []}
