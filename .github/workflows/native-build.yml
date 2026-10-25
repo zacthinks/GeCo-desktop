@@ -44,11 +44,12 @@ jobs:
           assert runners, "Missing app runner resource"
           assert workflows, "Missing workflow resource"
           assert uv, "Missing uv binary"
-      - name: Upload runnable application for future manual acceptance
+      - name: Archive native application
+        run: python packaging/archive.py --source dist-native --destination native-artifacts
+      - name: Upload native application archive for future manual acceptance
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: dist-native/
-          include-hidden-files: true
+          path: native-artifacts/*
           if-no-files-found: error
           retention-days: 7
