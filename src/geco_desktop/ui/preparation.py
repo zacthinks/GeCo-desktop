@@ -29,7 +29,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from geco_desktop.environments import EnvironmentManager, installed_runner_path, run_command
+from geco_desktop.environments import (
+    EnvironmentManager,
+    installed_runner_path,
+    run_command,
+    runtime_with_features,
+)
 from geco_desktop.project import ProjectDescriptor, RuntimeSpec, write_descriptor
 from geco_desktop.sessions import SessionManager
 
@@ -180,6 +185,16 @@ class PreparationWindow(QDialog):
         form.addRow("Scientific Python", self.python)
         form.addRow("TeAL version", self.teal)
         form.addRow("GeCo version", self.geco)
+        self.pdf_feature = QCheckBox("PDF text extraction")
+        self.embeddings_feature = QCheckBox("SentenceTransformer embeddings")
+        self.spacy_feature = QCheckBox("spaCy pipelines")
+        form.addRow("TeAL optional capabilities", self.pdf_feature)
+        form.addRow("", self.embeddings_feature)
+        form.addRow("", self.spacy_feature)
+        layout.addWidget(QLabel(
+            "Optional capabilities use TeAL's published extras; choose them "
+            "before creating an immutable shared scientific environment."
+        ))
         layout.addWidget(QLabel("The scientific environment is installed/reused outside the project folder."))
         self.create_button = _button("Create project and provision environment", self.create_project)
         layout.addWidget(self.create_button)
@@ -201,7 +216,14 @@ class PreparationWindow(QDialog):
             return
         parent = Path(self.destination.text()).expanduser()
         root = parent / (name if name.endswith(".gecod") else f"{name}.gecod")
-        spec = RuntimeSpec(self.python.text().strip(), self.teal.text().strip(), self.geco.text().strip())
+        spec = runtime_with_features(
+            self.python.text().strip(),
+            self.teal.text().strip(),
+            self.geco.text().strip(),
+            pdf=self.pdf_feature.isChecked(),
+            embeddings=self.embeddings_feature.isChecked(),
+            spacy=self.spacy_feature.isChecked(),
+        )
 
         def work():
             interpreter = self.environments.ensure(spec)
@@ -228,6 +250,18 @@ class PreparationWindow(QDialog):
         self.recover_button.setVisible(self.root is not None and not (self.root / ".teal").exists())
         for widget in (self.project_name, self.destination, self.python, self.teal, self.geco):
             widget.setReadOnly(True)
+        for name, widget in (
+            ("pdf", self.pdf_feature),
+            ("transformers", self.embeddings_feature),
+            ("spacy", self.spacy_feature),
+        ):
+            widget.setChecked(
+                any(f"text-analysis-lab[" in requirement
+                    and name in requirement.split("[", 1)[1].split("]", 1)[0].split(",")
+                    for requirement in self.descriptor.runtime.locked_packages)
+                if self.descriptor else False
+            )
+            widget.setEnabled(False)
         if self.descriptor:
             self.python.setText(self.descriptor.runtime.python)
             self.teal.setText(self.descriptor.runtime.teal)
