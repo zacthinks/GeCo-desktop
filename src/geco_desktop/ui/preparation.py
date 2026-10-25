@@ -11,6 +11,7 @@ from typing import Any
 
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QDialog,
     QFileDialog,
@@ -242,23 +243,62 @@ class PreparationWindow(QDialog):
 
     def _import_page(self) -> None:
         page, layout, form = _form_page()
+        self.source_kind = QComboBox()
+        for title, kind in (
+            ("CSV file", "csv"), ("CSV folder", "csv_folder"),
+            ("Excel workbook", "excel"), ("Excel folder", "excel_folder"),
+            ("JSONL file", "jsonl"), ("Parquet file", "parquet"),
+            ("Text file", "txt"), ("Text folder", "txt_folder"),
+            ("PDF file", "pdf"), ("PDF folder", "pdf_folder"),
+        ):
+            self.source_kind.addItem(title, kind)
+        form.addRow("Source type", self.source_kind)
         self.csv_path = QLineEdit()
-        form.addRow("CSV file", _row(self.csv_path, _button("Choose…", self.choose_csv)))
+        form.addRow("Source file or folder", _row(self.csv_path, _button("Choose…", self.choose_csv)))
+        self.recursive = QCheckBox("Include nested folders")
+        self.recursive.setChecked(True)
+        form.addRow("", self.recursive)
         self.text_columns = QListWidget()
         self.text_columns.setSelectionMode(QListWidget.SelectionMode.MultiSelection)
         self.metadata_columns = QListWidget()
         self.metadata_columns.setSelectionMode(QListWidget.SelectionMode.MultiSelection)
-        form.addRow("Text fields", self.text_columns)
-        form.addRow("Metadata fields", self.metadata_columns)
-        self.import_button = _button("Import selected columns into TeAL", self.import_documents)
+        self.text_label = QLabel("Text fields")
+        self.metadata_label = QLabel("Metadata fields")
+        form.addRow(self.text_label, self.text_columns)
+        form.addRow(self.metadata_label, self.metadata_columns)
+        self.import_button = _button("Import into TeAL", self.import_documents)
         layout.addWidget(self.import_button)
-        self.csv_message = QLabel("Choose a CSV to inspect its columns. Other import formats follow.")
+        self.csv_message = QLabel("Select a source to inspect the available columns or files.")
         self.csv_message.setWordWrap(True)
         layout.addWidget(self.csv_message)
         self.tabs.addTab(page, "2 · Import")
+        self.source_kind.currentIndexChanged.connect(self._update_source_kind)
+        self._update_source_kind()
+
+    def _update_source_kind(self) -> None:
+        kind = str(self.source_kind.currentData() or "csv")
+        is_folder = kind.endswith("_folder")
+        is_documents = kind in {"txt", "txt_folder", "pdf", "pdf_folder"}
+        self.recursive.setVisible(is_folder)
+        for widget in (self.text_columns, self.metadata_columns, self.text_label, self.metadata_label):
+            widget.setVisible(not is_documents)
+        self.csv_path.clear()
+        self.text_columns.clear()
+        self.metadata_columns.clear()
+        self.csv_message.setText("Choose a source to inspect before importing.")
 
     def choose_csv(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(self, "Import CSV", "", "CSV files (*.csv)")
+        kind = str(self.source_kind.currentData())
+        recursive = self.recursive.isChecked()
+        if kind.endswith("_folder"):
+            path = QFileDialog.getExistingDirectory(self, "Choose source folder")
+        else:
+            extension = {
+                "csv": "CSV files (*.csv)", "excel": "Excel files (*.xlsx)",
+                "jsonl": "JSON Lines (*.jsonl)", "parquet": "Parquet files (*.parquet)",
+                "txt": "Text files (*.txt)", "pdf": "PDF files (*.pdf)",
+            }[kind]
+            path, _ = QFileDialog.getOpenFileName(self, "Choose source file", "", extension)
         if not path:
             return
         self.csv_path.setText(path)
@@ -266,37 +306,45 @@ class PreparationWindow(QDialog):
         def finished(data):
             self.text_columns.clear()
             self.metadata_columns.clear()
-            for name in data["columns"]:
-                self.text_columns.addItem(name)
-                self.metadata_columns.addItem(name)
-            for i in range(self.text_columns.count()):
-                if self.text_columns.item(i).text().lower() in {"text", "content", "document"}:
-                    self.text_columns.item(i).setSelected(True)
-            self.csv_message.setText(f"{len(data['columns'])} columns available; choose text and metadata fields.")
+            if kind not in {"txt", "txt_folder", "pdf", "pdf_folder"}:
+                for name in data["columns"]:
+                    self.text_columns.addItem(str(name))
+                    self.metadata_columns.addItem(str(name))
+                for i in range(self.text_columns.count()):
+                    if self.text_columns.item(i).text().lower() in {"text", "content", "document"}:
+                        self.text_columns.item(i).setSelected(True)
+            self.csv_message.setText(
+                f"{data['file_count']} source file(s); {len(data['columns'])} field(s) available."
+            )
 
-        self._run(lambda: self._command("csv_schema", path=path), finished,
-                  message="Inspecting CSV header…")
+        self._run(lambda: self._command(
+            "source_schema", source=path, kind=kind, recursive=recursive
+        ), finished, message="Inspecting source structure…")
 
     def import_documents(self) -> None:
+        kind = str(self.source_kind.currentData())
         text = [x.text() for x in self.text_columns.selectedItems()]
         metadata = [x.text() for x in self.metadata_columns.selectedItems()]
-        if not text:
+        if kind not in {"txt", "txt_folder", "pdf", "pdf_folder"} and not text:
             QMessageBox.warning(self, "Import", "Select at least one text field.")
             return
         if set(text) & set(metadata):
             QMessageBox.warning(self, "Import", "A field cannot be text and metadata simultaneously.")
             return
-        csv_path = self.csv_path.text()
+        source_path = self.csv_path.text()
+        recursive = self.recursive.isChecked()
         root = str(self.root)
+
         def done(data):
             self.import_metadata = metadata
             self.status.setText(f"Imported {data['rows']} TeAL rows.")
             self.tabs.setCurrentIndex(2)
             self.refresh_catalog()
+
         self._run(lambda: self._command(
-            "import_csv", path=root, csv_path=csv_path,
-            text_fields=text, metadata_fields=metadata,
-        ), done, message="Importing source data into TeAL…")
+            "import_source", path=root, source_path=source_path, kind=kind,
+            text_fields=text, metadata_fields=metadata, recursive=recursive,
+        ), done, message="Importing source data through TeAL…")
 
     def _prepare_page(self) -> None:
         page, layout, form = _form_page()
