@@ -87,6 +87,7 @@ class MainWindow(QMainWindow):
         browse.clicked.connect(self.open_project)
         home_layout.addWidget(browse)
         home_layout.addWidget(self._button_environment_manager())
+        home_layout.addWidget(self._button_model_manager())
         home_layout.addStretch()
         tabs.addTab(home, "Home")
 
@@ -134,6 +135,17 @@ class MainWindow(QMainWindow):
         from .environment_manager import EnvironmentManagerDialog
 
         dialog = EnvironmentManagerDialog(self.environments, self)
+        dialog.exec()
+
+    def _button_model_manager(self) -> QPushButton:
+        button = QPushButton("Model Manager…")
+        button.clicked.connect(self.open_model_manager)
+        return button
+
+    def open_model_manager(self) -> None:
+        from .model_manager import ModelManagerDialog
+
+        dialog = ModelManagerDialog(self.environments, self)
         dialog.exec()
 
     def new_project(self) -> None:
