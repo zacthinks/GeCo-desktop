@@ -3,11 +3,12 @@ import pytest
 
 qtwidgets = pytest.importorskip("PySide6.QtWidgets")
 
-from geco_desktop.ui.preparation import PreparationWindow
-
 
 def test_native_wizard_can_construct_and_switch_parameter_sections(tmp_path):
+    from geco_desktop.ui.preparation import PreparationWindow
+
     app = qtwidgets.QApplication.instance() or qtwidgets.QApplication([])
+    assert app is not None
     class Stub:
         pass
 
