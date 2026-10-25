@@ -288,6 +288,11 @@ def _translator(kind: str, field: str, options: Mapping[str, Any]) -> Any:
     from text_analysis_lab import translators as tr
 
     if kind == "pattern":
+        if not hasattr(tr, "PatternExtractor"):
+            raise RuntimeError(
+                "This scientific environment does not include TeAL PatternExtractor. "
+                "Use a compatible TeAL release before applying pattern extraction."
+            )
         return tr.PatternExtractor(
             str(options["pattern"]),
             field=field,
