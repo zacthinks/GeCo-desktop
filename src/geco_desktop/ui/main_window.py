@@ -86,6 +86,7 @@ class MainWindow(QMainWindow):
         browse.setObjectName("primary")
         browse.clicked.connect(self.open_project)
         home_layout.addWidget(browse)
+        home_layout.addWidget(self._button_environment_manager())
         home_layout.addStretch()
         tabs.addTab(home, "Home")
 
@@ -123,6 +124,17 @@ class MainWindow(QMainWindow):
         self._tasks.remove(task)
         self.status.setText("Could not open project.")
         QMessageBox.warning(self, "GeCo Desktop", message)
+
+    def _button_environment_manager(self) -> QPushButton:
+        button = QPushButton("Scientific Environments…")
+        button.clicked.connect(self.open_environment_manager)
+        return button
+
+    def open_environment_manager(self) -> None:
+        from .environment_manager import EnvironmentManagerDialog
+
+        dialog = EnvironmentManagerDialog(self.environments, self)
+        dialog.exec()
 
     def new_project(self) -> None:
         from .preparation import PreparationWindow
