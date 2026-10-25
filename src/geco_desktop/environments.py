@@ -142,6 +142,8 @@ class EnvironmentManager:
                     "state": state,
                     "fingerprint": profile.fingerprint,
                     "python": spec.python,
+                    "interpreter": str(profile.python),
+                    "spec": spec.to_dict(),
                     "teal": spec.teal,
                     "geco": spec.geco,
                 })
