@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import os
 import platform
+import plistlib
 import shutil
 import subprocess
 import sys
@@ -49,6 +50,21 @@ def build(output: Path, *, uv: str | None = None) -> None:
         if not (bundled / "uv.exe").is_file():
             raise RuntimeError(f"Missing provisioner after Windows packaging: {bundled}")
         print("Windows provisioner:", bundled / "uv.exe", "size:", (bundled / "uv.exe").stat().st_size)
+    if platform.system() == "Darwin":
+        info_path = output / "GeCo Desktop.app" / "Contents" / "Info.plist"
+        if not info_path.is_file():
+            raise FileNotFoundError(f"Missing macOS application metadata: {info_path}")
+        with info_path.open("rb") as stream:
+            info = plistlib.load(stream)
+        info["CFBundleIdentifier"] = "org.geco.desktop"
+        info["CFBundleDocumentTypes"] = [{
+            "CFBundleTypeName": "GeCo Desktop project",
+            "CFBundleTypeExtensions": ["gecod"],
+            "CFBundleTypeRole": "Editor",
+            "LSHandlerRank": "Alternate",
+        }]
+        with info_path.open("wb") as stream:
+            plistlib.dump(info, stream)
     print("Created native application in", output)
     print("Platform:", platform.system(), platform.machine())
 
