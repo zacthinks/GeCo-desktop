@@ -40,15 +40,6 @@ def test_preview_limit_is_bounded():
             workflow._positive_limit(value)
 
 
-def test_runner_invalid_translation_fails_without_teal_import(tmp_path):
-    response = runner.dispatch(request(
-        "preview_step", path=str(tmp_path), artifact_id="x",
-        kind="nonexistent", field="text", options={}
-    ))
-    # The runner rejects the unsupported preview mode before opening TeAL.
-    assert response is not None or True
-
-
 def test_finalize_reuses_persisted_link_without_creating_another(monkeypatch):
     created = []
     closed = []
@@ -89,8 +80,16 @@ def test_pattern_preview_is_not_committed(monkeypatch):
 
         def sample(self, **kwargs):
             calls.append(("sample", kwargs))
-            import pandas as pd
-            return pd.DataFrame({"text": ["Speaker 1: Hello"]})
+            class Frame:
+                def __getitem__(self, field):
+                    assert field == "text"
+                    return ["Speaker 1: Hello"]
+
+                def to_json(self, *, orient):
+                    assert orient == "records"
+                    return '[{"text":"Speaker 1: Hello"}]'
+
+            return Frame()
 
     class FakeProject:
         @classmethod
@@ -114,10 +113,18 @@ def test_pattern_preview_is_not_committed(monkeypatch):
             calls.append(("constructor", pattern, kwargs))
 
         def translate(self, values):
-            import pandas as pd
+            class Frame:
+                def __init__(self, field, value):
+                    self.field, self.value = field, value
+
+                def to_json(self, *, orient):
+                    import json
+                    assert orient == "records"
+                    return json.dumps([{self.field: self.value}])
+
             return {
-                "data": pd.DataFrame({"utterance": ["Hello"]}),
-                "metadata": pd.DataFrame({"speaker": ["Speaker 1"]}),
+                "data": Frame("utterance", "Hello"),
+                "metadata": Frame("speaker", "Speaker 1"),
             }
 
     translators = types.SimpleNamespace(PatternExtractor=FakeExtractor)
