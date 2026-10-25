@@ -232,3 +232,24 @@ def test_catalog_preserves_true_matrix_dimensions_without_listing_all_features(m
     assert len(artifact["data_fields"]) == 250
     assert artifact["source_artifact_id"] == "source-id"
     assert artifact["aliases"] == ["projected"]
+
+def test_umap_for_geco_requests_teal_reusable_fitted_state(monkeypatch):
+    import sys
+    import types
+    from geco_desktop.backend import workflow
+
+    class FakeUMAP:
+        def __init__(self, **params):
+            self.params = params
+
+    monkeypatch.setitem(
+        sys.modules, "text_analysis_lab",
+        types.SimpleNamespace(translators=types.SimpleNamespace(UMAP=FakeUMAP)),
+    )
+    result = workflow._translator(
+        "umap", "not-used", {"n_components": "5", "n_neighbors": "12"}
+    )
+    assert result.params["n_components"] == 5
+    assert result.params["reuse"] == "stored"
+    assert result.params["storage"] == "compact"
+    assert result.params["random_state"] == 42
