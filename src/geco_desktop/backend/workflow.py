@@ -199,13 +199,16 @@ def import_source(
         return _artifact_details(result)
 
 def _artifact_details(artifact: Any) -> dict[str, Any]:
+    # TeAL owns both the feature schema and all lineage. Bound UI field lists
+    # without truncating the true numeric dimensions of the artifact.
+    columns = list(artifact.get_data_columns())
     return {
         "id": str(artifact.artifact_id),
         "type": str(getattr(artifact.artifact_type, "value", artifact.artifact_type)),
         "rows": int(artifact.n_rows or 0),
         "keys": list(artifact.primary_key),
-        "data_fields": list(artifact.get_data_columns())[:250],
-        "dimensions": len(artifact.get_data_columns()),
+        "data_fields": columns[:250],
+        "dimensions": len(columns),
     }
 
 
@@ -220,6 +223,8 @@ def catalog(path: str) -> dict[str, Any]:
             artifact = project.get_artifact(str(item["artifact_id"]))
             row = _artifact_details(artifact)
             row["aliases"] = list(item.get("aliases") or [])
+            row["lineage_mode"] = str(item.get("lineage_mode") or "")
+            row["source_artifact_id"] = str(item.get("source_artifact_id") or "")
             rows.append(row)
         interrupted = [
             {
