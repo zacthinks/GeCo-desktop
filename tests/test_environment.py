@@ -10,6 +10,7 @@ from geco_desktop.environments import (
     EnvironmentManager,
     installed_runner_path,
     run_command,
+    runtime_with_features,
 )
 from geco_desktop.project import RuntimeSpec
 
@@ -53,3 +54,21 @@ def test_no_scientific_or_qt_imports_for_ping():
     )
     assert json.loads(result.stdout)["ok"] is True
     assert "PySide6" not in sys.modules
+
+
+def test_optional_teal_features_are_part_of_project_runtime_identity(tmp_path):
+    basic = runtime_with_features("3.11", "0.9.0", "0.8.15")
+    richer = runtime_with_features(
+        "3.11", "0.9.0", "0.8.15",
+        pdf=True, embeddings=True, spacy=True,
+    )
+    assert basic.locked_packages == (
+        "text-analysis-lab==0.9.0", "geometric-coder==0.8.15"
+    )
+    assert richer.locked_packages == (
+        "text-analysis-lab[pdf,spacy,transformers]==0.9.0",
+        "geometric-coder==0.8.15",
+    )
+    manager = EnvironmentManager(base=tmp_path)
+    assert manager.profile(richer).fingerprint != manager.profile(basic).fingerprint
+    assert manager.profile(richer).packages == richer.locked_packages
