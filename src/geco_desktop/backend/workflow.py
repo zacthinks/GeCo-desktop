@@ -358,6 +358,60 @@ def _translator(kind: str, field: str, options: Mapping[str, Any]) -> Any:
     raise ValueError(f"Unsupported preparation operation {kind!r}")
 
 
+
+def _preview_tables(
+    kind: str, before: list[dict[str, Any]], after: dict[str, Any],
+    *, field: str, options: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Convert standalone translator output to comparable bounded preview rows."""
+    if kind == "clean":
+        field_name = str(options.get("output_field") or field)
+        rows = [
+            {field_name: value}
+            for value in after["texts"]
+        ]
+    elif kind == "pattern":
+        data_rows = list(after.get("data", []))
+        metadata_rows = list(after.get("metadata", []))
+        if data_rows and len(data_rows) != len(before):
+            raise ValueError("PatternExtractor preview was not row-aligned.")
+        if metadata_rows and len(metadata_rows) != len(before):
+            raise ValueError("PatternExtractor metadata preview was not row-aligned.")
+        rows = []
+        for index in range(len(before)):
+            row = {}
+            if data_rows:
+                row.update(data_rows[index])
+            if metadata_rows:
+                row.update({f"metadata.{k}": v for k, v in metadata_rows[index].items()})
+            rows.append(row)
+    elif kind == "split":
+        positions = after["source_positions"]
+        segments = after["segment_ids"]
+        texts = after["texts"]
+        if len(positions) != len(segments) or len(segments) != len(texts):
+            raise ValueError("Split preview arrays were not aligned.")
+        text_name = str(options.get("output_field") or field)
+        rows = [
+            {"source_row": int(position) + 1,
+             str(options.get("new_key") or "segment_id"): int(segment),
+             text_name: value}
+            for position, segment, value in zip(positions, segments, texts, strict=True)
+        ]
+    else:
+        raise ValueError(f"Unsupported preview kind: {kind}")
+    columns = list(dict.fromkeys(key for row in rows for key in row))
+    return {
+        "before_columns": list(dict.fromkeys(key for row in before for key in row)),
+        "before_rows": before,
+        "after_columns": columns,
+        "after_rows": rows,
+        "source_rows": len(before),
+        "candidate_rows": len(rows),
+        "sample_only": True,
+    }
+
+
 def preview_step(
     path: str,
     artifact_id: str,
@@ -398,10 +452,12 @@ def preview_step(
                 "segment_ids": result["segment_ids"].tolist(),
                 "texts": result["texts"].fillna("").tolist(),
             }
+        before = json.loads(frame.to_json(orient="records"))
         return {
-            "sampling": "12 seeded sample rows (not exhaustive)",
-            "before": json.loads(frame.to_json(orient="records")),
+            "sampling": "Seeded random sample; no durable writes or full-corpus claims",
+            "before": before,
             "after": after,
+            **_preview_tables(kind, before, after, field=field, options=options),
         }
 
 
