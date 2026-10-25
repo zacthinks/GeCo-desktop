@@ -356,6 +356,8 @@ class PreparationWindow(QDialog):
             ("Regex cleaning", "clean"), ("Pattern extraction", "pattern"),
             ("Split into units", "split"), ("CountVectorizer", "count"),
             ("TF-IDF", "tfidf"), ("SVD", "svd"), ("UMAP", "umap"),
+            ("SentenceTransformer embeddings", "sentence_embeddings"),
+            ("spaCy sentence/token segmentation", "spacy"),
         ):
             self.operation.addItem(label, value)
         self.operation.currentIndexChanged.connect(self._update_parameters)
@@ -374,6 +376,12 @@ class PreparationWindow(QDialog):
             ("Neighbors", "n_neighbors", "15"),
             ("Minimum distance", "min_dist", "0.1"),
             ("Normalization (none, l1, l2)", "norm", "l2"),
+            ("SentenceTransformer model", "model", "sentence-transformers/all-MiniLM-L6-v2"),
+            ("Model revision (optional)", "revision", ""),
+            ("Normalize embeddings (true/false)", "normalize", "false"),
+            ("Context policy (error/truncate)", "truncation", "error"),
+            ("Maximum tokens (optional)", "max_length", ""),
+            ("spaCy model", "spacy_model", "en_core_web_sm"),
         ):
             edit = QLineEdit(default)
             self.inputs[key] = edit
@@ -414,6 +422,8 @@ class PreparationWindow(QDialog):
             "tfidf": {"norm"},
             "svd": {"n_components"},
             "umap": {"n_components", "n_neighbors", "min_dist"},
+            "sentence_embeddings": {"model", "revision", "normalize", "truncation", "max_length"},
+            "spacy": {"spacy_model"},
         }.get(kind, set())
         for key, edit in self.inputs.items():
             edit.setVisible(key in required)
