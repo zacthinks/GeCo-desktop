@@ -283,13 +283,15 @@ class PreparationWindow(QDialog):
         if set(text) & set(metadata):
             QMessageBox.warning(self, "Import", "A field cannot be text and metadata simultaneously.")
             return
+        csv_path = self.csv_path.text()
+        root = str(self.root)
         def done(data):
             self.import_metadata = metadata
             self.status.setText(f"Imported {data['rows']} TeAL rows.")
             self.tabs.setCurrentIndex(2)
             self.refresh_catalog()
         self._run(lambda: self._command(
-            "import_csv", path=str(self.root), csv_path=self.csv_path.text(),
+            "import_csv", path=root, csv_path=csv_path,
             text_fields=text, metadata_fields=metadata,
         ), done, message="Importing source data into TeAL…")
 
@@ -408,14 +410,17 @@ class PreparationWindow(QDialog):
         if not identifier:
             return
         kind = str(self.operation.currentData())
+        field = self.field.currentText()
+        options = self._options()
+        root = str(self.root)
         def done(result):
             rows = result.get("before", [])
             cols = list(rows[0]) if rows else []
             self._present_rows(cols, rows)
             self.status.setText(f"Try-only, no durable artifact created. {str(result.get('after'))[:900]}")
         self._run(lambda: self._command(
-            "preview_step", path=str(self.root), artifact_id=identifier, kind=kind,
-            field=self.field.currentText(), options=self._options(),
+            "preview_step", path=root, artifact_id=identifier, kind=kind,
+            field=field, options=options,
         ), done, message="Previewing the operation on a bounded sample…")
 
     def apply_operation(self) -> None:
@@ -424,6 +429,9 @@ class PreparationWindow(QDialog):
             return
         kind = str(self.operation.currentData())
         alias = self.output_alias.text().strip()
+        field = self.field.currentText()
+        options = self._options()
+        root = str(self.root)
         if not alias:
             QMessageBox.warning(self, "Artifact name", "Provide an output artifact name.")
             return
@@ -431,9 +439,9 @@ class PreparationWindow(QDialog):
             self.status.setText(f"Saved {len(result)} TeAL output artifact(s): {alias}.")
             self.refresh_catalog()
         self._run(lambda: self._command(
-            "apply_step", timeout=3600, path=str(self.root), artifact_id=identifier,
-            kind=kind, field=self.field.currentText(),
-            options=self._options(), alias=alias,
+            "apply_step", timeout=3600, path=root, artifact_id=identifier,
+            kind=kind, field=field,
+            options=options, alias=alias,
         ), done, message=f"Running {kind} on the full TeAL artifact…")
 
     def _final_page(self) -> None:
