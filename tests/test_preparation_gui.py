@@ -1,10 +1,10 @@
 """Offscreen construction contract for the real preparation workbench."""
 import pytest
 
-qtwidgets = pytest.importorskip("PySide6.QtWidgets")
-
 
 def test_native_wizard_can_construct_and_switch_parameter_sections(tmp_path):
+    # Import Qt inside the test to preserve isolated stdlib-only runner checks.
+    qtwidgets = pytest.importorskip("PySide6.QtWidgets")
     from geco_desktop.ui.preparation import PreparationWindow
 
     app = qtwidgets.QApplication.instance() or qtwidgets.QApplication([])
