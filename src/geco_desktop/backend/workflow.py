@@ -6,6 +6,7 @@ Every durable operation calls TeAL's public API within the pinned child Python.
 from __future__ import annotations
 
 import csv
+import json
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -39,13 +40,172 @@ def csv_schema(path: str) -> dict[str, Any]:
     return {"columns": columns, "sample": rows}
 
 
+
+SOURCE_TYPES = frozenset({
+    "csv", "csv_folder", "excel", "excel_folder", "jsonl", "parquet",
+    "txt", "txt_folder", "pdf", "pdf_folder",
+})
+
+
+def _source_files(source: Path, extension: str, *, recursive: bool) -> list[Path]:
+    if source.is_file():
+        if source.suffix.lower() != extension:
+            raise ValueError(f"Expected a {extension} source file.")
+        return [source]
+    if not source.is_dir():
+        raise FileNotFoundError(f"Source folder does not exist: {source}")
+    files = sorted(
+        file for file in (source.rglob("*") if recursive else source.iterdir())
+        if file.is_file() and file.suffix.lower() == extension
+    )
+    if not files:
+        raise ValueError(f"No {extension} files found under {source}.")
+    return files
+
+
+def source_schema(source: str, kind: str, recursive: bool = True) -> dict[str, Any]:
+    """Display a small source sample, without importing research data into TeAL.
+
+    TeAL remains responsible for the actual import, extraction and data typing.
+    """
+    if kind not in SOURCE_TYPES:
+        raise ValueError(f"Unsupported import type: {kind!r}")
+    path = Path(source).expanduser()
+    ext = {
+        "csv": ".csv", "csv_folder": ".csv",
+        "excel": ".xlsx", "excel_folder": ".xlsx",
+        "jsonl": ".jsonl", "parquet": ".parquet",
+        "txt": ".txt", "txt_folder": ".txt",
+        "pdf": ".pdf", "pdf_folder": ".pdf",
+    }[kind]
+    files = _source_files(path, ext, recursive=recursive)
+    if kind in {"txt", "txt_folder", "pdf", "pdf_folder"}:
+        sample = [
+            {"source_file": str(file.relative_to(path)) if path.is_dir() else file.name}
+            for file in files[:5]
+        ]
+        return {"columns": ["text"], "sample": sample, "file_count": len(files)}
+    file = files[0]
+    if kind in {"csv", "csv_folder"}:
+        result = csv_schema(str(file))
+    elif kind == "excel" or kind == "excel_folder":
+        try:
+            from openpyxl import load_workbook
+        except ImportError as exc:
+            raise RuntimeError("Excel preview requires openpyxl in the selected scientific environment.") from exc
+        book = load_workbook(file, read_only=True, data_only=True)
+        try:
+            sheet = book.active
+            it = sheet.iter_rows(values_only=True)
+            columns = [str(v) if v is not None else "" for v in next(it, ())]
+            rows = [
+                {col: value for col, value in zip(columns, record, strict=False)}
+                for _, record in zip(range(5), it, strict=False)
+            ]
+            result = {"columns": columns, "sample": rows}
+        finally:
+            book.close()
+    elif kind == "jsonl":
+        rows: list[dict[str, Any]] = []
+        with file.open("r", encoding="utf-8-sig") as stream:
+            for line in stream:
+                if not line.strip():
+                    continue
+                record = json.loads(line)
+                if not isinstance(record, dict):
+                    raise ValueError("JSONL observations must be JSON objects.")
+                rows.append(record)
+                if len(rows) >= 5:
+                    break
+        result = {"columns": list(dict.fromkeys(key for row in rows for key in row)), "sample": rows}
+    else:
+        try:
+            import duckdb
+        except ImportError as exc:
+            raise RuntimeError("Parquet preview requires DuckDB in the selected scientific environment.") from exc
+        con = duckdb.connect(database=":memory:")
+        try:
+            relation = con.read_parquet(str(file))
+            columns = [str(x) for x in relation.columns]
+            rows = [dict(zip(columns, values, strict=False)) for values in relation.limit(5).fetchall()]
+        finally:
+            con.close()
+        result = {"columns": columns, "sample": rows}
+    columns = result["columns"]
+    if not columns or any(not str(name).strip() for name in columns):
+        raise ValueError("The source requires nonempty field names.")
+    if len(set(columns)) != len(columns):
+        raise ValueError("The source has duplicate field names.")
+    result["file_count"] = len(files)
+    return result
+
+
+def import_source(
+    path: str,
+    source_path: str,
+    kind: str,
+    text_fields: list[str],
+    metadata_fields: list[str],
+    recursive: bool = True,
+) -> dict[str, Any]:
+    """Commit one import into the ordinary TeAL project with a stable alias."""
+    from text_analysis_lab import Project
+    from text_analysis_lab import translators as tr
+
+    if kind not in SOURCE_TYPES:
+        raise ValueError(f"Unsupported import type: {kind!r}")
+    folder_kind = kind.endswith("_folder")
+    file_kind = kind in {"txt", "pdf"}
+    text_file_kind = kind in {"txt", "txt_folder", "pdf", "pdf_folder"}
+    if not text_file_kind and not text_fields:
+        raise ValueError("Choose at least one text field.")
+    if set(text_fields) & set(metadata_fields):
+        raise ValueError("A field cannot be both text and metadata.")
+    input_path = Path(source_path).expanduser()
+    extension = ".pdf" if kind.startswith("pdf") else ".txt" if kind.startswith("txt") else None
+    if extension:
+        files = _source_files(input_path, extension, recursive=recursive)
+        if file_kind and len(files) != 1:
+            raise ValueError("Choose exactly one file for single-file import.")
+    with Project.open(path) as project:
+        if any("documents" in row.get("aliases", []) for row in project.list_artifacts()):
+            raise FileExistsError("Documents were already imported. Reopen them in the Prepare tab.")
+        if text_file_kind:
+            root = input_path.parent if file_kind else input_path
+            pattern = input_path.name if file_kind else f"*{extension}"
+            inventory = project.folder_inventory(
+                root, patterns=pattern, recursive=recursive if not file_kind else False,
+                alias="file_inventory",
+            )
+            extractor = tr.PdfTextExtractor() if kind.startswith("pdf") else tr.TextFileExtractor()
+            result = project.translate(extractor, inventory, alias="documents")["output"]
+        else:
+            method = {
+                "csv": project.read_csv,
+                "csv_folder": project.read_csv_folder,
+                "excel": project.read_excel,
+                "excel_folder": project.read_excel_folder,
+                "jsonl": project.read_jsonl,
+                "parquet": project.read_parquet,
+            }[kind]
+            options: dict[str, Any] = {
+                "text_fields": text_fields,
+                "metadata_fields": metadata_fields,
+                "alias": "documents",
+            }
+            if folder_kind:
+                options["recursive"] = recursive
+            result = method(input_path, **options)
+        return _artifact_details(result)
+
 def _artifact_details(artifact: Any) -> dict[str, Any]:
     return {
         "id": str(artifact.artifact_id),
         "type": str(getattr(artifact.artifact_type, "value", artifact.artifact_type)),
         "rows": int(artifact.n_rows or 0),
         "keys": list(artifact.primary_key),
-        "data_fields": list(artifact.get_data_columns()),
+        "data_fields": list(artifact.get_data_columns())[:250],
+        "dimensions": len(artifact.get_data_columns()),
     }
 
 
