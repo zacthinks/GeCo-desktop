@@ -94,6 +94,19 @@ def _fill_combo(combo: QComboBox, entries: list[dict], *, empty: str | None = No
             combo.setCurrentIndex(index)
 
 
+
+def _artifact_choice(artifact: dict) -> dict[str, str]:
+    """Display a TeAL registered artifact without inventing Desktop identity."""
+    alias = ", ".join(artifact.get("aliases") or ()) or str(artifact["id"])[:12]
+    kind = str(artifact.get("type", "unknown")).replace("_", " ")
+    rows = int(artifact.get("rows", 0))
+    dims = int(artifact.get("dimensions", 0))
+    description = f"{alias} · {kind} · {rows:,} rows"
+    if kind in {"dense matrix", "sparse matrix"}:
+        description += f" × {dims:,} features"
+    return {"id": str(artifact["id"]), "name": description}
+
+
 class PreparationWindow(QDialog):
     """Guided stateful interface; restart reopens TeAL artifacts, not a parallel DAG."""
 
@@ -631,9 +644,9 @@ class PreparationWindow(QDialog):
                 (self.documents, table, None),
                 (self.text_artifact, table, None),
                 (self.geometry, matrices, None),
-                (self.projection, [a for a in matrices if len(a["data_fields"]) == 2], "No 2D view"),
+                (self.projection, [a for a in matrices if a["dimensions"] == 2], "No 2D view"),
             ):
-                _fill_combo(combo, [{"id": a["id"], "name": ", ".join(a["aliases"]) or a["id"][:12]} for a in entries], empty=empty)
+                _fill_combo(combo, [_artifact_choice(a) for a in entries], empty=empty)
             self._update_fields()
             self._refresh_text_fields()
             if self.import_metadata and not self.metadata_names.text():
