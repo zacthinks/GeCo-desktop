@@ -37,7 +37,7 @@ def dispatch(message: dict[str, Any]) -> dict[str, Any]:
             return {"project_path": str(project.path), "workspaces": workspaces}
         finally:
             project.close()
-    if action in {"model_inventory", "download_model", "csv_schema", "source_schema", "import_source", "catalog", "import_csv", "preview", "preview_step", "apply_step", "finalize"}:
+    if action in {"model_inventory", "download_model", "resume_operation", "csv_schema", "source_schema", "import_source", "catalog", "import_csv", "preview", "preview_step", "apply_step", "finalize"}:
         # This sibling resource ships with the current installed Desktop runner,
         # not as a package added to an immutable TeAL scientific environment.
         resource = Path(__file__).with_name("workflow.py")
