@@ -221,9 +221,42 @@ def catalog(path: str) -> dict[str, Any]:
             row = _artifact_details(artifact)
             row["aliases"] = list(item.get("aliases") or [])
             rows.append(row)
+        interrupted = [
+            {
+                "operation_id": str(op["operation_id"]),
+                "operation_type": str(op["operation_type"]),
+                "status": str(op["status"]),
+                "error": str(op.get("error") or ""),
+            }
+            for op in project.list_operations()
+            if op.get("status") in {"failed", "incomplete"}
+            and op.get("operation_type") in {"translate", "subset"}
+        ]
         return {
             "artifacts": rows,
             "workspaces": project.geco.list(),
+            # Candidates, not a guarantee: TeAL checks the translator/route.
+            "interrupted_operations": interrupted,
+        }
+
+
+
+def resume_operation(path: str, operation_id: str) -> dict[str, Any]:
+    """Delegate entirely to TeAL's operation-local checkpoint/resume machinery."""
+    from text_analysis_lab import Project
+
+    if not operation_id or not operation_id.strip():
+        raise ValueError("Select a recorded TeAL operation to resume.")
+    with Project.open(path) as project:
+        # No translator reconstruction, no altered parameters, no checkpoint
+        # handling, and no fallback reexecution under a new operation ID.
+        outputs = project.resume_operation(operation_id.strip())
+        return {
+            "operation_id": operation_id.strip(),
+            "outputs": {
+                label: _artifact_details(artifact)
+                for label, artifact in outputs.items()
+            },
         }
 
 
