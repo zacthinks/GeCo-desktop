@@ -65,6 +65,38 @@ class RuntimeProfile:
         )
 
 
+def runtime_with_features(
+    python: str,
+    teal: str,
+    geco: str,
+    *,
+    pdf: bool = False,
+    embeddings: bool = False,
+    spacy: bool = False,
+) -> RuntimeSpec:
+    """Use TeAL's published optional extras; no parallel package recipes.
+
+    The requirements pin direct project dependencies. They are not a fully
+    resolved transitive lock; the shared environment remains immutable after
+    installation and version changes create separate profiles.
+    """
+    enabled = sorted(
+        name for name, requested in (
+            ("pdf", pdf), ("transformers", embeddings), ("spacy", spacy)
+        ) if requested
+    )
+    extras = f"[{','.join(enabled)}]" if enabled else ""
+    return RuntimeSpec(
+        python,
+        teal,
+        geco,
+        locked_packages=(
+            f"text-analysis-lab{extras}=={teal}",
+            f"geometric-coder=={geco}",
+        ),
+    )
+
+
 class EnvironmentManager:
     def __init__(self, base: Path | None = None, uv: str | None = None) -> None:
         self.base = Path(base) if base is not None else application_data()
