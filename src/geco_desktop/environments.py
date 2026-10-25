@@ -68,7 +68,13 @@ class RuntimeProfile:
 class EnvironmentManager:
     def __init__(self, base: Path | None = None, uv: str | None = None) -> None:
         self.base = Path(base) if base is not None else application_data()
-        self.uv = uv or os.environ.get("GECO_DESKTOP_UV") or shutil.which("uv")
+        bundled_root = Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))
+        bundled_uv = bundled_root / ("uv.exe" if os.name == "nt" else "uv")
+        self.uv = (
+            uv or os.environ.get("GECO_DESKTOP_UV")
+            or (str(bundled_uv) if bundled_uv.is_file() else None)
+            or shutil.which("uv")
+        )
 
     def profile(self, spec: RuntimeSpec) -> RuntimeProfile:
         return RuntimeProfile(spec, self.base)
