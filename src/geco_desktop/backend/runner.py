@@ -7,8 +7,8 @@ not installed into each immutable scientific environment and never imports Qt.
 from __future__ import annotations
 
 import _thread
-import importlib.util
 import argparse
+import importlib.util
 import json
 import sys
 import threading
