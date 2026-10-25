@@ -528,12 +528,15 @@ def finalize(
 def model_inventory() -> dict[str, Any]:
     """Read shared Hugging Face snapshots using the installed Hub API."""
     try:
-        from huggingface_hub import scan_cache_dir
+        from huggingface_hub import constants, scan_cache_dir
     except ImportError as exc:
         raise RuntimeError(
             "This scientific runtime lacks huggingface_hub. Use a compatible "
             "model-enabled TeAL environment."
         ) from exc
+    # An empty first-use cache is normal, not an installation failure.
+    if not Path(constants.HF_HUB_CACHE).is_dir():
+        return {"models": [], "warnings": []}
     cache = scan_cache_dir()
     models: list[dict[str, Any]] = []
     for repo in sorted(cache.repos, key=lambda item: item.repo_id):
