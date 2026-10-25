@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal
+from PySide6.QtCore import QObject, QRunnable, QThreadPool, Qt, Signal
 from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
@@ -236,10 +236,7 @@ class MainWindow(QMainWindow):
                 ("App-owned runner", session.runner_path),
             ):
                 detail = QLabel(value)
-                detail.setTextInteractionFlags(
-                    detail.textInteractionFlags()
-                    | detail.textInteractionFlags().TextSelectableByMouse
-                )
+                detail.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
                 detail.setWordWrap(True)
                 form.addRow(label, detail)
             dialog.exec()
