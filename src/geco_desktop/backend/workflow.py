@@ -149,9 +149,6 @@ def import_source(
     recursive: bool = True,
 ) -> dict[str, Any]:
     """Commit one import into the ordinary TeAL project with a stable alias."""
-    from text_analysis_lab import Project
-    from text_analysis_lab import translators as tr
-
     if kind not in SOURCE_TYPES:
         raise ValueError(f"Unsupported import type: {kind!r}")
     folder_kind = kind.endswith("_folder")
@@ -161,6 +158,9 @@ def import_source(
         raise ValueError("Choose at least one text field.")
     if set(text_fields) & set(metadata_fields):
         raise ValueError("A field cannot be both text and metadata.")
+    from text_analysis_lab import Project
+    from text_analysis_lab import translators as tr
+
     input_path = Path(source_path).expanduser()
     extension = ".pdf" if kind.startswith("pdf") else ".txt" if kind.startswith("txt") else None
     if extension:
