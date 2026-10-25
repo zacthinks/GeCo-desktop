@@ -26,7 +26,7 @@ def build(output: Path, *, uv: str | None = None) -> None:
         raise FileNotFoundError(
             "The builder needs a uv executable. Install uv before packaging the GUI."
         )
-    entry = Path(__file__).resolve().parents[1] / "src" / "geco_desktop" / "__main__.py"
+    entry = Path(__file__).resolve().parents[1] / "packaging" / "entry.py"
     output.mkdir(parents=True, exist_ok=True)
     command = [
         sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean",
