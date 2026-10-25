@@ -60,8 +60,8 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          & "${env:ProgramFiles(x86)}\\Inno Setup 6\\ISCC.exe" "packaging\\windows.iss"
-          if (-not (Test-Path "native-installers\\GeCoDesktop-Windows-Setup.exe")) { throw "Windows installer missing" }
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "packaging\windows.iss"
+          if (-not (Test-Path "native-installers\GeCoDesktop-Windows-Setup.exe")) { throw "Windows installer missing" }
       - name: Build macOS DMG
         if: runner.os == 'macOS'
         run: python packaging/macos_dmg.py --source dist-native --output native-installers
