@@ -109,7 +109,7 @@ def preview(path: str, artifact_id: str, *, n: int = 12, random: bool = False) -
             "metadata_mode": "full",
         }
         if random:
-            frame = artifact.sample(n=n, random_state=42, form="table", **options)
+            frame = artifact.sample(n=min(n, int(artifact.n_rows or 0)), random_state=42, form="table", **options)
         else:
             frame = artifact.preview(n=n, **options)
         # Pandas JSON serialization handles NA, timestamps and numpy scalars.
@@ -191,7 +191,7 @@ def preview_step(
         if artifact.artifact_type.value not in {"table", "jsonl"}:
             raise ValueError("Text-operation previews require a table artifact.")
         frame = artifact.sample(
-            n=12, random_state=42,
+            n=min(12, int(artifact.n_rows or 0)), random_state=42,
             key_columns=False, data_columns=[field], metadata_columns=False,
             form="table",
         )
