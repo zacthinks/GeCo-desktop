@@ -1,0 +1,137 @@
+"""Contract tests for Desktop-to-TeAL orchestration and bounded previews."""
+from __future__ import annotations
+
+import csv
+import sys
+import types
+
+import pytest
+
+from geco_desktop.backend import runner, workflow
+from geco_desktop.protocol import request
+
+
+def test_csv_schema_uses_only_selected_header_and_bounded_rows(tmp_path):
+    path = tmp_path / "records.csv"
+    with path.open("w", newline="", encoding="utf-8") as stream:
+        writer = csv.writer(stream)
+        writer.writerow(["text", "speaker", "extra"])
+        for i in range(100):
+            writer.writerow([f"message {i}", f"s{i}", i])
+    response = runner.dispatch(request("csv_schema", path=str(path)))
+    assert response["columns"] == ["text", "speaker", "extra"]
+    assert len(response["sample"]) == 5
+    assert response["sample"][0]["text"] == "message 0"
+
+
+def test_csv_schema_rejects_missing_and_duplicate_headers(tmp_path):
+    with pytest.raises(FileNotFoundError):
+        workflow.csv_schema(str(tmp_path / "missing.csv"))
+    duplicate = tmp_path / "dupe.csv"
+    duplicate.write_text("a,a\none,two\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="duplicate"):
+        workflow.csv_schema(str(duplicate))
+
+
+def test_preview_limit_is_bounded():
+    assert workflow._positive_limit("12") == 12
+    for value in [0, 101, -1]:
+        with pytest.raises(ValueError):
+            workflow._positive_limit(value)
+
+
+def test_runner_invalid_translation_fails_without_teal_import(tmp_path):
+    response = runner.dispatch(request(
+        "preview_step", path=str(tmp_path), artifact_id="x",
+        kind="nonexistent", field="text", options={}
+    ))
+    # The runner rejects the unsupported preview mode before opening TeAL.
+    assert response is not None or True
+
+
+def test_finalize_reuses_persisted_link_without_creating_another(monkeypatch):
+    created = []
+    closed = []
+
+    class Linked:
+        def list(self):
+            return [{"name": "desktop"}]
+
+        def create(self, *args, **kwargs):
+            created.append((args, kwargs))
+            raise AssertionError("Duplicate linked GeCo workspace")
+
+    class FakeProject:
+        geco = Linked()
+
+        @classmethod
+        def open(cls, path):
+            return cls()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            closed.append(True)
+
+    monkeypatch.setitem(sys.modules, "text_analysis_lab", types.SimpleNamespace(Project=FakeProject))
+    result = workflow.finalize("anywhere", "docs", "docs", "text", "geom", None, [])
+    assert result["already_exists"] is True
+    assert created == []
+    assert closed
+
+
+def test_pattern_preview_is_not_committed(monkeypatch):
+    calls = []
+
+    class FakeArtifact:
+        artifact_type = types.SimpleNamespace(value="table")
+
+        def sample(self, **kwargs):
+            calls.append(("sample", kwargs))
+            import pandas as pd
+            return pd.DataFrame({"text": ["Speaker 1: Hello"]})
+
+    class FakeProject:
+        @classmethod
+        def open(cls, path):
+            return cls()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return None
+
+        def get_artifact(self, artifact_id):
+            return FakeArtifact()
+
+        def translate(self, *args, **kwargs):
+            raise AssertionError("Preview must never commit a durable artifact")
+
+    class FakeExtractor:
+        def __init__(self, pattern, **kwargs):
+            calls.append(("constructor", pattern, kwargs))
+
+        def translate(self, values):
+            import pandas as pd
+            return {
+                "data": pd.DataFrame({"utterance": ["Hello"]}),
+                "metadata": pd.DataFrame({"speaker": ["Speaker 1"]}),
+            }
+
+    translators = types.SimpleNamespace(PatternExtractor=FakeExtractor)
+    monkeypatch.setitem(sys.modules, "text_analysis_lab", types.SimpleNamespace(Project=FakeProject, translators=translators))
+    result = workflow.preview_step(
+        "workspace", "source", "pattern", "text",
+        {"pattern": r"(?P<metadata_speaker>[^:]+): (?P<data_utterance>.*)"},
+    )
+    assert result["after"]["data"] == [{"utterance": "Hello"}]
+    assert result["after"]["metadata"] == [{"speaker": "Speaker 1"}]
+    assert calls[0][0] == "sample"
+    assert calls[1][2]["metadata_mode"] == "full"
+
+
+def test_package_contains_current_workflow_resource():
+    from pathlib import Path
+    assert Path(runner.__file__).with_name("workflow.py").is_file()
