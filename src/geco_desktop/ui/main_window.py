@@ -99,6 +99,7 @@ class MainWindow(QMainWindow):
         for text, handler in (
             ("Refresh", self.refresh_sessions),
             ("Open in browser", self.open_session_browser),
+            ("Details", self.session_details),
             ("Stop", self.stop_session),
         ):
             button = QPushButton(text)
@@ -213,6 +214,36 @@ class MainWindow(QMainWindow):
                 else:
                     self.status.setText("GeCo session is alive but not responding yet.")
                 return
+
+    def session_details(self) -> None:
+        """Keep technical process details out of the main session list."""
+        key = self._selected_key()
+        for session in getattr(self, "_latest_sessions", []):
+            if session.key != key:
+                continue
+            from PySide6.QtWidgets import QDialog, QFormLayout
+
+            dialog = QDialog(self)
+            dialog.setWindowTitle("GeCo Session Details")
+            dialog.resize(440, 230)
+            form = QFormLayout(dialog)
+            for label, value in (
+                ("Project", session.project_name),
+                ("Location", session.project_path),
+                ("Status", session.status),
+                ("Server", session.url),
+                ("Process ID", str(session.pid)),
+                ("App-owned runner", session.runner_path),
+            ):
+                detail = QLabel(value)
+                detail.setTextInteractionFlags(
+                    detail.textInteractionFlags()
+                    | detail.textInteractionFlags().TextSelectableByMouse
+                )
+                detail.setWordWrap(True)
+                form.addRow(label, detail)
+            dialog.exec()
+            return
 
     def stop_session(self) -> None:
         key = self._selected_key()
