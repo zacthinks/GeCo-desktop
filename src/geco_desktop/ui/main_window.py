@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QRunnable, Qt, QThreadPool, Signal
+from PySide6.QtCore import QObject, QRunnable, QSettings, Qt, QThreadPool, Signal
 from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
@@ -64,6 +64,7 @@ class MainWindow(QMainWindow):
         self.pool = QThreadPool.globalInstance()
         self._tasks: list[_Task] = []
         self._preparation = None
+        self.settings = QSettings("GeCo Desktop", "GeCo Desktop")
 
         holder = QWidget()
         layout = QVBoxLayout(holder)
@@ -88,6 +89,14 @@ class MainWindow(QMainWindow):
         home_layout.addWidget(browse)
         home_layout.addWidget(self._button_environment_manager())
         home_layout.addWidget(self._button_model_manager())
+        home_layout.addWidget(QLabel("Recent projects"))
+        self.recent_list = QListWidget()
+        self.recent_list.setMaximumHeight(160)
+        self.recent_list.itemDoubleClicked.connect(
+            lambda item: self.open_project_path(str(item.data(Qt.ItemDataRole.UserRole)))
+        )
+        home_layout.addWidget(self.recent_list)
+        self._load_recent_projects()
         home_layout.addStretch()
         tabs.addTab(home, "Home")
 
@@ -127,6 +136,59 @@ class MainWindow(QMainWindow):
         self.status.setText("Could not open project.")
         QMessageBox.warning(self, "GeCo Desktop", message)
 
+    def _recent_paths(self) -> list[str]:
+        saved = self.settings.value("recent_projects", [])
+        if isinstance(saved, str):
+            return [saved]
+        return [str(value) for value in saved] if isinstance(saved, list) else []
+
+    def _load_recent_projects(self) -> None:
+        self.recent_list.clear()
+        for value in self._recent_paths():
+            if not (Path(value) / "project.gecod").is_file():
+                continue
+            self.recent_list.addItem(value)
+            self.recent_list.item(self.recent_list.count() - 1).setData(
+                Qt.ItemDataRole.UserRole, value
+            )
+
+    def _remember_project(self, root: str | Path) -> None:
+        resolved = str(Path(root).expanduser().resolve())
+        recent = [resolved] + [name for name in self._recent_paths() if name != resolved]
+        self.settings.setValue("recent_projects", recent[:10])
+        self._load_recent_projects()
+
+    def open_project_path(self, path: str) -> None:
+        self.status.setText("Opening GeCo project…")
+
+        def work():
+            root, descriptor = read_descriptor(Path(path))
+            interpreter = self.environments.locate(descriptor.runtime)
+            if descriptor.state == "preparing":
+                return root, descriptor, interpreter, None
+            session = self.sessions.start(root, descriptor, interpreter)
+            return root, descriptor, interpreter, session
+
+        def completed(data):
+            root, descriptor, interpreter, session = data
+            self._remember_project(root)
+            if session is None:
+                from .preparation import PreparationWindow
+
+                self._preparation = PreparationWindow(
+                    self.environments, self.sessions,
+                    root=root, descriptor=descriptor,
+                    interpreter=interpreter, parent=self,
+                )
+                self._preparation.show()
+                self.status.setText(f"Resumed preparation: {descriptor.name}")
+                return
+            self.status.setText(f"Running: {session.project_name}")
+            self.sessions.open_browser(session)
+            self.refresh_sessions()
+
+        self._background(work, completed)
+
     def _button_environment_manager(self) -> QPushButton:
         button = QPushButton("Scientific Environments…")
         button.clicked.connect(self.open_environment_manager)
@@ -154,42 +216,15 @@ class MainWindow(QMainWindow):
 
         # Keep the window alive when opening it non-modally.
         self._preparation = PreparationWindow(self.environments, self.sessions, parent=self)
+        self._preparation.project_created.connect(self._remember_project)
         self._preparation.show()
 
     def open_project(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
             self, "Open GeCo Desktop project", "", "GeCo project (project.gecod)"
         )
-        if not path:
-            return
-        self.status.setText("Opening GeCo project…")
-
-        def work():
-            root, descriptor = read_descriptor(Path(path))
-            interpreter = self.environments.locate(descriptor.runtime)
-            if descriptor.state == "preparing":
-                return root, descriptor, interpreter, None
-            session = self.sessions.start(root, descriptor, interpreter)
-            return root, descriptor, interpreter, session
-
-        def completed(data):
-            root, descriptor, interpreter, session = data
-            if session is None:
-                from .preparation import PreparationWindow
-
-                self._preparation = PreparationWindow(
-                    self.environments, self.sessions,
-                    root=root, descriptor=descriptor,
-                    interpreter=interpreter, parent=self,
-                )
-                self._preparation.show()
-                self.status.setText(f"Resumed preparation: {descriptor.name}")
-                return
-            self.status.setText(f"Running: {session.project_name}")
-            self.sessions.open_browser(session)
-            self.refresh_sessions()
-
-        self._background(work, completed)
+        if path:
+            self.open_project_path(path)
 
     def refresh_sessions(self) -> None:
         self._background(self.sessions.list, self._show_sessions)
