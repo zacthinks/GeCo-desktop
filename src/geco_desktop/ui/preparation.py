@@ -172,6 +172,9 @@ class PreparationWindow(QDialog):
         layout.addWidget(QLabel("The scientific environment is installed/reused outside the project folder."))
         self.create_button = _button("Create project and provision environment", self.create_project)
         layout.addWidget(self.create_button)
+        self.recover_button = _button("Initialize missing TeAL state", self.initialize_missing_teal)
+        self.recover_button.setVisible(False)
+        layout.addWidget(self.recover_button)
         layout.addStretch()
         self.tabs.addTab(page, "1 · Project")
 
@@ -210,12 +213,29 @@ class PreparationWindow(QDialog):
 
     def _set_existing(self) -> None:
         self.create_button.setEnabled(False)
+        self.recover_button.setVisible(self.root is not None and not (self.root / ".teal").exists())
         for widget in (self.project_name, self.destination, self.python, self.teal, self.geco):
             widget.setReadOnly(True)
         if self.descriptor:
             self.python.setText(self.descriptor.runtime.python)
             self.teal.setText(self.descriptor.runtime.teal)
             self.geco.setText(self.descriptor.runtime.geco)
+
+    def initialize_missing_teal(self) -> None:
+        """Recover a project interrupted after writing its portable descriptor."""
+        if self.root is None or self.descriptor is None or self.interpreter is None:
+            return
+        if (self.root / ".teal").exists():
+            self.recover_button.setVisible(False)
+            self.refresh_catalog()
+            return
+        def done(_result):
+            self.recover_button.setVisible(False)
+            self.tabs.setCurrentIndex(1)
+            self.refresh_catalog()
+        self._run(lambda: self._command(
+            "create_teal", path=str(self.root), name=self.descriptor.name
+        ), done, message="Initializing missing TeAL project state…")
 
     def _import_page(self) -> None:
         page, layout, form = _form_page()
@@ -305,6 +325,7 @@ class PreparationWindow(QDialog):
             edit = QLineEdit(default)
             self.inputs[key] = edit
             form.addRow(label, edit)
+        self._prepare_form = form
         self.output_alias = QLineEdit("prepared")
         form.addRow("Save as artifact", self.output_alias)
         layout.addWidget(_row(
@@ -343,10 +364,9 @@ class PreparationWindow(QDialog):
         }.get(kind, set())
         for key, edit in self.inputs.items():
             edit.setVisible(key in required)
-            label = edit.parentWidget()
             # QFormLayout labels are separate; explicitly hide them.
-            form = self.tabs.widget(2).layout().itemAt(0).layout()
-            row, role = form.getWidgetPosition(edit)
+            form = self._prepare_form
+            row, _role = form.getWidgetPosition(edit)
             if row >= 0:
                 label_widget = form.itemAt(row, QFormLayout.ItemRole.LabelRole)
                 if label_widget is not None and label_widget.widget():
