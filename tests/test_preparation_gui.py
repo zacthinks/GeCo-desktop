@@ -87,7 +87,6 @@ def test_open_missing_science_runtime_requires_explicit_consent(tmp_path, monkey
     descriptor = ProjectDescriptor.new("Moved", RuntimeSpec("3.11", "0.9.0", "0.8.15"))
     write_descriptor(root, descriptor)
     window = MainWindow()
-    messages = []
     installed = []
     prompts = []
 
