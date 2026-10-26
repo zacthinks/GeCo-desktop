@@ -140,4 +140,4 @@ if __name__ == "__main__":
     parser.add_argument("--science-python", type=Path, required=True)
     parser.add_argument("--output-root", type=Path, required=True)
     arguments = parser.parse_args()
-    smoke(arguments.science_python.resolve(), arguments.output_root.resolve())
+    smoke(arguments.science_python.absolute(), arguments.output_root.resolve())
