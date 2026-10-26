@@ -235,10 +235,6 @@ def test_catalog_preserves_true_matrix_dimensions_without_listing_all_features(m
     assert artifact["aliases"] == ["projected"]
 
 def test_umap_for_geco_requests_teal_reusable_fitted_state(monkeypatch):
-    import sys
-    import types
-    from geco_desktop.backend import workflow
-
     class FakeUMAP:
         def __init__(self, **params):
             self.params = params
