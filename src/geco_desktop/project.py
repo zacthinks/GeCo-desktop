@@ -146,3 +146,30 @@ def write_descriptor(root: str | Path, descriptor: ProjectDescriptor, *, replace
         if os.path.exists(staged):
             os.unlink(staged)
     return target
+
+
+def reconcile_finalization(
+    root: str | Path,
+    descriptor: ProjectDescriptor,
+    workspaces: list[dict[str, Any]],
+) -> ProjectDescriptor:
+    """Repair a stale descriptor only when TeAL already owns the linked workspace.
+
+    TeAL's GeCo manifest is authoritative. This only repairs Desktop's small
+    portable state marker after a crash between linking and the descriptor write.
+    It never creates/replaces a GeCo workspace or mutates scientific artifacts.
+    """
+    if descriptor.state != "preparing":
+        return descriptor
+    if not any(
+        isinstance(workspace, dict)
+        and workspace.get("name") == descriptor.workspace_name
+        for workspace in workspaces
+    ):
+        return descriptor
+    recovered = ProjectDescriptor.from_dict({
+        **descriptor.to_dict(),
+        "state": "finalized",
+    })
+    write_descriptor(root, recovered, replace=True)
+    return recovered
