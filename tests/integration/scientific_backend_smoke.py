@@ -17,6 +17,7 @@ from geco_desktop.project import (
     ProjectDescriptor,
     RuntimeSpec,
     read_descriptor,
+    reconcile_finalization,
     write_descriptor,
 )
 from geco_desktop.sessions import SessionManager
@@ -111,7 +112,13 @@ def smoke(science_python: Path, output_root: Path) -> None:
         ),
         state="finalized", last_artifact_id=cleaned["id"],
     )
-    write_descriptor(root, descriptor)
+    # Simulate a crash after TeAL created the linked workspace but before
+    # Desktop recorded finalized state in its portable descriptor.
+    write_descriptor(root, replace(descriptor, state="preparing"))
+    saved = read_descriptor(root)[1]
+    recovered = reconcile_finalization(root, saved, command("project_info")["workspaces"])
+    assert recovered == descriptor
+    assert read_descriptor(root)[1].state == "finalized"
     sessions = SessionManager(base=output_root / "desktop-session-registry")
     print("Desktop runner: start browser session", flush=True)
     active = sessions.start(root, descriptor, science_python, wait_seconds=120)
