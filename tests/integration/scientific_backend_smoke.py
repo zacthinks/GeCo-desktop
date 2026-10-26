@@ -44,9 +44,9 @@ def smoke(science_python: Path, output_root: Path) -> None:
 
     def command(action: str, **kwargs):
         print(f"Desktop runner: {action}", flush=True)
-        return run_command(
-            science_python, runner, action, timeout=480, path=str(root), **kwargs
-        )
+        if action not in {"source_schema", "csv_schema"}:
+            kwargs.setdefault("path", str(root))
+        return run_command(science_python, runner, action, timeout=480, **kwargs)
 
     root.mkdir()
     command("create_teal", name="Scientific backend")
