@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
 )
 
 from geco_desktop.environments import EnvironmentManager
-from geco_desktop.project import read_descriptor
+from geco_desktop.project import read_descriptor, reconcile_finalization
 from geco_desktop.sessions import SessionManager
 
 THEME = """
@@ -164,6 +164,18 @@ class MainWindow(QMainWindow):
         def work():
             root, descriptor = read_descriptor(Path(path))
             interpreter = self.environments.locate(descriptor.runtime)
+            if descriptor.state == "preparing" and (root / ".teal").is_dir():
+                # A crash can occur after TeAL creates the linked workspace but
+                # before Desktop commits its portable finalized-state marker.
+                from geco_desktop.environments import installed_runner_path, run_command
+
+                info = run_command(
+                    interpreter, installed_runner_path(), "project_info",
+                    timeout=90, path=str(root),
+                )
+                descriptor = reconcile_finalization(
+                    root, descriptor, info["workspaces"],
+                )
             if descriptor.state == "preparing":
                 return root, descriptor, interpreter, None
             session = self.sessions.start(root, descriptor, interpreter)
