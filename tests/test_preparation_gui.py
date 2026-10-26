@@ -72,3 +72,106 @@ def test_preview_tabs_show_candidate_data_without_saving():
         assert window.after_table.item(0, 0).text() == "cleaned"
     finally:
         window.close()
+
+
+def test_open_missing_science_runtime_requires_explicit_consent(tmp_path, monkeypatch):
+    qtwidgets = pytest.importorskip("PySide6.QtWidgets")
+    from geco_desktop.environments import EnvironmentError
+    from geco_desktop.project import ProjectDescriptor, RuntimeSpec, write_descriptor
+    from geco_desktop.ui.main_window import MainWindow
+
+    app = qtwidgets.QApplication.instance() or qtwidgets.QApplication([])
+    assert app is not None
+    root = tmp_path / "moved.gecod"
+    root.mkdir()
+    descriptor = ProjectDescriptor.new("Moved", RuntimeSpec("3.11", "0.9.0", "0.8.15"))
+    write_descriptor(root, descriptor)
+    window = MainWindow()
+    messages = []
+    installed = []
+    prompts = []
+
+    class MissingManager:
+        def locate(self, runtime):
+            raise EnvironmentError("Required scientific environment is not installed")
+
+        def profile(self, runtime):
+            from types import SimpleNamespace
+
+            return SimpleNamespace(
+                path=tmp_path / "shared-environments" / "missing",
+                packages=("text-analysis-lab==0.9.0", "geometric-coder==0.8.15"),
+            )
+
+        def ensure(self, runtime):
+            installed.append(runtime)
+            return tmp_path / "python"
+
+    window.environments = MissingManager()
+    monkeypatch.setattr(window, "_remember_project", lambda path: None)
+
+    def background(work, done):
+        done(work())
+
+    monkeypatch.setattr(window, "_background", background)
+    monkeypatch.setattr(
+        qtwidgets.QMessageBox,
+        "question",
+        lambda *args, **kwargs: (
+            prompts.append(args[2]) or qtwidgets.QMessageBox.StandardButton.No
+        ),
+    )
+    try:
+        window.open_project_path(str(root))
+        assert not installed
+        assert len(prompts) == 1
+        assert "text-analysis-lab==0.9.0" in prompts[0]
+        assert "declined" in window.status.text()
+        assert descriptor == __import__(
+            "geco_desktop.project", fromlist=["read_descriptor"]
+        ).read_descriptor(root)[1]
+    finally:
+        window.close()
+
+
+def test_missing_science_runtime_install_reopens_project(tmp_path, monkeypatch):
+    qtwidgets = pytest.importorskip("PySide6.QtWidgets")
+    from geco_desktop.project import ProjectDescriptor, RuntimeSpec, write_descriptor
+    from geco_desktop.ui.main_window import MainWindow
+
+    app = qtwidgets.QApplication.instance() or qtwidgets.QApplication([])
+    assert app is not None
+    root = tmp_path / "moved.gecod"
+    root.mkdir()
+    descriptor = ProjectDescriptor.new("Moved", RuntimeSpec("3.11", "0.9.0", "0.8.15"))
+    write_descriptor(root, descriptor)
+    window = MainWindow()
+    installed = []
+    reopened = []
+
+    class MissingManager:
+        def profile(self, runtime):
+            from types import SimpleNamespace
+
+            return SimpleNamespace(
+                path=tmp_path / "shared-environments" / "missing",
+                packages=("text-analysis-lab==0.9.0", "geometric-coder==0.8.15"),
+            )
+
+        def ensure(self, runtime):
+            installed.append(runtime)
+            return tmp_path / "python"
+
+    window.environments = MissingManager()
+    monkeypatch.setattr(
+        qtwidgets.QMessageBox, "question",
+        lambda *args, **kwargs: qtwidgets.QMessageBox.StandardButton.Yes,
+    )
+    monkeypatch.setattr(window, "_background", lambda work, done: done(work()))
+    monkeypatch.setattr(window, "open_project_path", lambda path: reopened.append(path))
+    try:
+        window._offer_runtime_install(root, descriptor)
+        assert installed == [descriptor.runtime]
+        assert reopened == [str(root)]
+    finally:
+        window.close()
