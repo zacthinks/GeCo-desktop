@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from geco_desktop.environments import EnvironmentManager
+from geco_desktop.environments import EnvironmentError, EnvironmentManager
 from geco_desktop.project import read_descriptor, reconcile_finalization
 from geco_desktop.sessions import SessionManager
 
@@ -163,7 +163,15 @@ class MainWindow(QMainWindow):
 
         def work():
             root, descriptor = read_descriptor(Path(path))
-            interpreter = self.environments.locate(descriptor.runtime)
+            try:
+                interpreter = self.environments.locate(descriptor.runtime)
+            except EnvironmentError:
+                # A moved/copied .gecod project does not carry a Python runtime.
+                # Missing profiles can be explicitly provisioned by the user;
+                # corrupt/partial profiles must not be silently overwritten.
+                if self.environments.profile(descriptor.runtime).path.exists():
+                    raise
+                return root, descriptor, None, None
             if descriptor.state == "preparing" and (root / ".teal").is_dir():
                 # A crash can occur after TeAL creates the linked workspace but
                 # before Desktop commits its portable finalized-state marker.
@@ -184,6 +192,9 @@ class MainWindow(QMainWindow):
         def completed(data):
             root, descriptor, interpreter, session = data
             self._remember_project(root)
+            if interpreter is None:
+                self._offer_runtime_install(root, descriptor)
+                return
             if session is None:
                 from .preparation import PreparationWindow
 
@@ -200,6 +211,36 @@ class MainWindow(QMainWindow):
             self.refresh_sessions()
 
         self._background(work, completed)
+
+    def _offer_runtime_install(self, root, descriptor) -> None:
+        """Ask before installing a missing runtime while opening a portable project."""
+        profile = self.environments.profile(descriptor.runtime)
+        packages = "\n".join(f"  • {requirement}" for requirement in profile.packages)
+        answer = QMessageBox.question(
+            self,
+            "Install scientific environment?",
+            f"The project {descriptor.name!r} needs a scientific Python environment "
+            "that is not installed on this computer.\n\n"
+            f"Python: {descriptor.runtime.python}\n"
+            f"Declared packages:\n{packages}\n\n"
+            f"Install location:\n{profile.path}\n\n"
+            "Install these packages now? The project folder and TeAL data "
+            "will not be modified.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            self.status.setText(
+                f"Project {descriptor.name!r} was not opened: scientific environment "
+                "installation was declined. Its files are unchanged."
+            )
+            return
+
+        self.status.setText(f"Installing scientific environment for {descriptor.name}…")
+        self._background(
+            lambda: self.environments.ensure(descriptor.runtime),
+            lambda _python: self.open_project_path(str(root)),
+        )
 
     def _button_environment_manager(self) -> QPushButton:
         button = QPushButton("Scientific Environments…")
