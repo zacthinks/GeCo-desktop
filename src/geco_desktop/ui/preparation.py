@@ -136,6 +136,7 @@ class PreparationWindow(QDialog):
         self.artifacts: list[dict] = []
         self.import_metadata: list[str] = []
         self.capability_info: dict[str, Any] | None = None
+        self._checked_model_settings: tuple[str, str | None, str] | None = None
 
         layout = QVBoxLayout(self)
         layout.addWidget(QLabel("Prepare research materials, then open your coding workspace."))
@@ -465,6 +466,9 @@ class PreparationWindow(QDialog):
             self.inputs[key] = edit
             form.addRow(label, edit)
         self._prepare_form = form
+        for key in ("model", "revision", "spacy_model"):
+            self.inputs[key].textChanged.connect(self._invalidate_model_capabilities)
+            self.inputs[key].editingFinished.connect(self.refresh_capabilities)
         self.output_alias = QLineEdit("prepared")
         form.addRow("Save step as", self.output_alias)
         layout.addWidget(_row(
@@ -488,13 +492,29 @@ class PreparationWindow(QDialog):
         self.tabs.addTab(page, "3 · Prepare")
         self._update_parameters()
 
+    def _model_settings(self) -> tuple[str, str | None, str]:
+        return (
+            self.inputs["model"].text().strip(),
+            self.inputs["revision"].text().strip() or None,
+            self.inputs["spacy_model"].text().strip(),
+        )
+
+    def _invalidate_model_capabilities(self, _value: str) -> None:
+        """Do not trust a cached availability result for different model inputs."""
+        self._checked_model_settings = None
+        for index in range(self.operation.count()):
+            if self.operation.itemData(index) in {"sentence_embeddings", "spacy"}:
+                item = self.operation.model().item(index)
+                item.setEnabled(False)
+                item.setToolTip("Model settings changed. Recheck available tools.")
+        self._update_parameters()
+
     def refresh_capabilities(self) -> None:
         if self.interpreter is None or self.descriptor is None:
             return
-        model = self.inputs["model"].text().strip()
-        revision = self.inputs["revision"].text().strip() or None
-        spacy_model = self.inputs["spacy_model"].text().strip()
+        model, revision, spacy_model = self._model_settings()
         self.capability_info = None
+        self._checked_model_settings = None
         self._run(
             lambda: self._command(
                 "capabilities", model=model, revision=revision,
@@ -506,6 +526,7 @@ class PreparationWindow(QDialog):
 
     def _set_capabilities(self, info: dict[str, Any]) -> None:
         self.capability_info = info
+        self._checked_model_settings = self._model_settings()
         for index in range(self.operation.count()):
             kind = self.operation.itemData(index)
             item = info["operations"].get(kind, {})
@@ -525,6 +546,13 @@ class PreparationWindow(QDialog):
     def _capability_allowed(self, *, kind: str, operation: bool) -> bool:
         if self.capability_info is None:
             self.status.setText("Checking tool availability. Try again shortly.")
+            return False
+        if (
+            operation
+            and kind in {"sentence_embeddings", "spacy"}
+            and self._checked_model_settings != self._model_settings()
+        ):
+            self.status.setText("Model selection changed. Recheck available tools.")
             return False
         states = (
             self.capability_info["operations"] if operation
