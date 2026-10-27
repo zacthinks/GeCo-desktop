@@ -247,3 +247,45 @@ def test_finalized_preparation_disables_writes_and_shows_open_workflow():
         assert wizard.tabs.currentIndex() == 3
     finally:
         wizard.close()
+
+
+def test_capability_results_disable_unavailable_choices_without_removing_them():
+    qtwidgets = pytest.importorskip("PySide6.QtWidgets")
+    from geco_desktop.ui.preparation import PreparationWindow
+
+    app = qtwidgets.QApplication.instance() or qtwidgets.QApplication([])
+    assert app is not None
+
+    class Stub:
+        pass
+
+    wizard = PreparationWindow(Stub(), Stub())
+    try:
+        supported = {
+            str(wizard.operation.itemData(i)): {"available": True, "reason": ""}
+            for i in range(wizard.operation.count())
+        }
+        supported["pattern"] = {"available": False, "reason": "Missing PatternExtractor"}
+        supported["sentence_embeddings"] = {
+            "available": False, "reason": "Model not cached",
+        }
+        wizard._set_capabilities({
+            "imports": {"pdf": {"available": False, "reason": "Missing pdfplumber"}},
+            "operations": supported,
+        })
+        lookup = {
+            wizard.operation.itemData(i): wizard.operation.model().item(i)
+            for i in range(wizard.operation.count())
+        }
+        assert not lookup["pattern"].isEnabled()
+        assert lookup["pattern"].toolTip() == "Missing PatternExtractor"
+        assert not lookup["sentence_embeddings"].isEnabled()
+        assert lookup["clean"].isEnabled()
+        pdf = next(
+            i for i in range(wizard.source_kind.count())
+            if wizard.source_kind.itemData(i) == "pdf"
+        )
+        assert not wizard.source_kind.model().item(pdf).isEnabled()
+        assert wizard.source_kind.model().item(0).isEnabled()
+    finally:
+        wizard.close()
