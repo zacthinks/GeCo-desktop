@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from dataclasses import replace
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -109,6 +110,30 @@ class EnvironmentManager:
             or shutil.which("uv")
         )
 
+    def resolve(self, spec: RuntimeSpec) -> RuntimeSpec:
+        """Resolve one portable, transitive requirements snapshot with uv.
+
+        A universal resolution includes platform markers, so the same project
+        descriptor can be reconstructed on supported Windows/macOS/Linux hosts.
+        Existing locked descriptors never resolve again on open or repair.
+        """
+        if spec.resolved_requirements is not None:
+            return spec
+        if not self.uv:
+            raise EnvironmentError("uv is needed to resolve scientific dependencies")
+        with tempfile.TemporaryDirectory(prefix="gecod-resolve-") as directory:
+            source = Path(directory) / "requirements.in"
+            output = Path(directory) / "requirements.txt"
+            source.write_text("\n".join(self.profile(spec).packages) + "\n", encoding="utf-8")
+            self._uv(
+                "pip", "compile", "--universal", "--python-version", spec.python,
+                "--output-file", str(output), str(source),
+            )
+            result = output.read_text(encoding="utf-8")
+        if not result.strip():
+            raise EnvironmentError("Scientific dependency resolver returned an empty lock")
+        return replace(spec, resolved_requirements=result)
+
     def profile(self, spec: RuntimeSpec) -> RuntimeProfile:
         return RuntimeProfile(spec, self.base)
 
@@ -153,10 +178,22 @@ class EnvironmentManager:
     ) -> None:
         """Populate an unpublished profile using only the selected Python runtime."""
         self._uv("venv", "--python", spec.python, str(staged))
-        self._uv(
-            "pip", "install", "--python", str(interpreter_path(staged)),
-            *profile.packages,
-        )
+        if spec.resolved_requirements is not None:
+            lock_file = staged.parent / f"{staged.name}-requirements.txt"
+            try:
+                lock_file.write_text(spec.resolved_requirements, encoding="utf-8")
+                self._uv(
+                    "pip", "install", "--python", str(interpreter_path(staged)),
+                    "--requirement", str(lock_file),
+                )
+            finally:
+                lock_file.unlink(missing_ok=True)
+        else:
+            # Legacy descriptors, issued before portable locks, remain readable.
+            self._uv(
+                "pip", "install", "--python", str(interpreter_path(staged)),
+                *profile.packages,
+            )
         manifest = {"fingerprint": profile.fingerprint, "spec": spec.to_dict()}
         (staged / "profile.json").write_text(
             json.dumps(manifest, indent=2), encoding="utf-8"
