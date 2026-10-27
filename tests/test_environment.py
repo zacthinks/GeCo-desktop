@@ -127,3 +127,55 @@ def test_repair_promotes_staged_profile_and_keeps_manifest(tmp_path, monkeypatch
     assert manager.repair(spec) == profile.python
     assert not (profile.path / "old-content").exists()
     assert manager.locate(spec) == profile.python
+
+
+def test_portable_resolution_is_persisted_and_reused(tmp_path, monkeypatch):
+    manager = EnvironmentManager(base=tmp_path, uv="uv")
+    spec = runtime_with_features("3.11", "0.9.0", "0.8.15", pdf=True)
+    commands = []
+
+    def fake_uv(*args):
+        commands.append(args)
+        if args[:2] == ("pip", "compile"):
+            output = __import__("pathlib").Path(args[args.index("--output-file") + 1])
+            output.write_text("geometric-coder==0.8.15\\ntext-analysis-lab==0.9.0\\n")
+
+    monkeypatch.setattr(manager, "_uv", fake_uv)
+    locked = manager.resolve(spec)
+    assert "geometric-coder==0.8.15" in locked.resolved_requirements
+    assert locked.to_dict()["resolved_requirements"] == locked.resolved_requirements
+    assert RuntimeSpec.from_dict(locked.to_dict()) == locked
+    assert manager.resolve(locked) == locked
+    assert len(commands) == 1
+    assert "--universal" in commands[0]
+    assert manager.profile(locked).fingerprint != manager.profile(spec).fingerprint
+
+
+def test_staged_install_uses_portable_lock_without_modifying_it(tmp_path, monkeypatch):
+    manager = EnvironmentManager(base=tmp_path, uv="uv")
+    spec = RuntimeSpec(
+        "3.11", "0.9.0", "0.8.15",
+        resolved_requirements="geometric-coder==0.8.15\\ntext-analysis-lab==0.9.0\\n",
+    )
+    calls = []
+
+    def fake_uv(*args):
+        calls.append(args)
+        if args[:1] == ("venv",):
+            from pathlib import Path
+            from geco_desktop.environments import interpreter_path
+
+            target = Path(args[-1])
+            interpreter = interpreter_path(target)
+            interpreter.parent.mkdir(parents=True, exist_ok=True)
+            interpreter.touch()
+        elif args[:2] == ("pip", "install"):
+            lock = __import__("pathlib").Path(args[args.index("--requirement") + 1])
+            assert lock.read_text() == spec.resolved_requirements
+
+    monkeypatch.setattr(manager, "_uv", fake_uv)
+    installed = manager.ensure(spec)
+    assert installed == manager.profile(spec).python
+    assert "--requirement" in calls[-1]
+    assert manager.locate(spec) == installed
+    assert not list(manager.profile(spec).path.parent.glob("*-requirements.txt"))
