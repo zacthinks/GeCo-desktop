@@ -289,3 +289,38 @@ def test_capability_results_disable_unavailable_choices_without_removing_them():
         assert wizard.source_kind.model().item(0).isEnabled()
     finally:
         wizard.close()
+
+
+def test_changing_model_invalidates_capability_and_stale_probe_result():
+    qtwidgets = pytest.importorskip("PySide6.QtWidgets")
+    from geco_desktop.ui.preparation import PreparationWindow
+
+    app = qtwidgets.QApplication.instance() or qtwidgets.QApplication([])
+    assert app is not None
+
+    class Stub:
+        pass
+
+    wizard = PreparationWindow(Stub(), Stub())
+    try:
+        supported = {
+            str(wizard.operation.itemData(i)): {"available": True, "reason": ""}
+            for i in range(wizard.operation.count())
+        }
+        response = {"imports": {"pdf": {"available": True}}, "operations": supported}
+        original = wizard._model_settings()
+        wizard._set_capabilities(response, checked=original)
+        embedding = next(
+            i for i in range(wizard.operation.count())
+            if wizard.operation.itemData(i) == "sentence_embeddings"
+        )
+        assert wizard.operation.model().item(embedding).isEnabled()
+        wizard.inputs["model"].setText("new/model")
+        assert not wizard.operation.model().item(embedding).isEnabled()
+        assert not wizard._capability_allowed(kind="sentence_embeddings", operation=True)
+        wizard._set_capabilities(response, checked=original)
+        assert not wizard.operation.model().item(embedding).isEnabled()
+        wizard._set_capabilities(response, checked=wizard._model_settings())
+        assert wizard.operation.model().item(embedding).isEnabled()
+    finally:
+        wizard.close()
