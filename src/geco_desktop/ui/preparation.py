@@ -491,7 +491,6 @@ class PreparationWindow(QDialog):
         revision = self.inputs["revision"].text().strip() or None
         spacy_model = self.inputs["spacy_model"].text().strip()
         self.capability_info = None
-        self.import_button.setEnabled(False)
         self._run(
             lambda: self._command(
                 "capabilities", model=model, revision=revision,
@@ -507,18 +506,17 @@ class PreparationWindow(QDialog):
             kind = self.operation.itemData(index)
             item = info["operations"].get(kind, {})
             available = bool(item.get("available"))
-            self.operation.setItemData(index, available, 256 + 1)
+            self.operation.model().item(index).setEnabled(available)
             self.operation.setItemData(index, item.get("reason", ""), 3)
         for index in range(self.source_kind.count()):
             kind = self.source_kind.itemData(index)
             state = info["imports"].get("pdf", {"available": True})
             available = not str(kind).startswith("pdf") or bool(state["available"])
-            self.source_kind.setItemData(index, available, 256 + 1)
+            self.source_kind.model().item(index).setEnabled(available)
             self.source_kind.setItemData(
                 index, "" if available else state.get("reason", ""), 3,
             )
         self._update_parameters()
-        self._update_source_kind()
 
     def _capability_allowed(self, *, kind: str, operation: bool) -> bool:
         if self.capability_info is None:
