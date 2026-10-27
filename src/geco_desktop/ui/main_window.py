@@ -169,9 +169,10 @@ class MainWindow(QMainWindow):
                 # A moved/copied .gecod project does not carry a Python runtime.
                 # Missing profiles can be explicitly provisioned by the user;
                 # corrupt/partial profiles must not be silently overwritten.
-                if self.environments.profile(descriptor.runtime).path.exists():
-                    raise
-                return root, descriptor, None, None
+                profile_path = self.environments.profile(descriptor.runtime).path
+                if profile_path.exists():
+                    return root, descriptor, None, "repair"
+                return root, descriptor, None, "install"
             if descriptor.state == "preparing" and (root / ".teal").is_dir():
                 # A crash can occur after TeAL creates the linked workspace but
                 # before Desktop commits its portable finalized-state marker.
@@ -193,7 +194,10 @@ class MainWindow(QMainWindow):
             root, descriptor, interpreter, session = data
             self._remember_project(root)
             if interpreter is None:
-                self._offer_runtime_install(root, descriptor)
+                if session == "repair":
+                    self._offer_runtime_repair(root, descriptor)
+                else:
+                    self._offer_runtime_install(root, descriptor)
                 return
             if session is None:
                 from .preparation import PreparationWindow
@@ -239,6 +243,29 @@ class MainWindow(QMainWindow):
         self.status.setText(f"Installing scientific environment for {descriptor.name}…")
         self._background(
             lambda: self.environments.ensure(descriptor.runtime),
+            lambda _python: self.open_project_path(str(root)),
+        )
+
+    def _offer_runtime_repair(self, root, descriptor) -> None:
+        """Explicit opt-in repair; never touch the portable project files."""
+        profile = self.environments.profile(descriptor.runtime)
+        answer = QMessageBox.question(
+            self,
+            "Repair scientific environment?",
+            f"The environment for {descriptor.name!r} is incomplete or damaged.\n\n"
+            f"Environment: {profile.path}\n\n"
+            "Rebuild this shared scientific environment? The replacement is "
+            "prepared separately before the old directory is replaced. "
+            "Your .gecod project will not be modified.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            self.status.setText("Environment repair declined; project files unchanged.")
+            return
+        self.status.setText(f"Repairing scientific environment for {descriptor.name}…")
+        self._background(
+            lambda: self.environments.repair(descriptor.runtime),
             lambda _python: self.open_project_path(str(root)),
         )
 
