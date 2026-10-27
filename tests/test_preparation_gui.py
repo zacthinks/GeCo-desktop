@@ -22,7 +22,9 @@ def test_native_wizard_can_construct_and_switch_parameter_sections(tmp_path):
                 "clean", "pattern", "split", "count", "tfidf", "svd", "umap",
                 "sentence_embeddings", "spacy"
             }
-        assert wizard.windowTitle() == "Prepare a GeCo project"
+        assert wizard.windowTitle() == "Create a GeCo research project"
+        assert not wizard.advanced_runtime.isChecked()
+        assert wizard.create_button.text() == "Create research project"
     finally:
         wizard.close()
 
@@ -214,3 +216,34 @@ def test_incomplete_runtime_repair_requires_consent(tmp_path, monkeypatch):
         assert calls == [descriptor.runtime, str(tmp_path)]
     finally:
         window.close()
+
+def test_finalized_preparation_disables_writes_and_shows_open_workflow():
+    qtwidgets = pytest.importorskip("PySide6.QtWidgets")
+    from geco_desktop.project import ProjectDescriptor, RuntimeSpec
+    from geco_desktop.ui.preparation import PreparationWindow
+
+    app = qtwidgets.QApplication.instance() or qtwidgets.QApplication([])
+    assert app is not None
+
+    class Stub:
+        pass
+
+    wizard = PreparationWindow(Stub(), Stub())
+    try:
+        from dataclasses import replace
+
+        wizard.descriptor = replace(
+            ProjectDescriptor.new("Study", RuntimeSpec("3.11", "0.9.0", "0.8.15")),
+            state="finalized",
+        )
+        wizard._show_finalized()
+        assert wizard.tabs.currentIndex() == 3
+        assert not any(wizard.tabs.isTabEnabled(i) for i in (0, 1, 2))
+        assert wizard.tabs.isTabEnabled(3)
+        assert not wizard.resume_button.isEnabled()
+        wizard.import_documents()
+        wizard.apply_operation()
+        wizard.finalize_project()
+        assert wizard.tabs.currentIndex() == 3
+    finally:
+        wizard.close()
