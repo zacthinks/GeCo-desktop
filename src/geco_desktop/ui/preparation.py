@@ -341,6 +341,7 @@ class PreparationWindow(QDialog):
         layout.addWidget(self.import_button)
         self.csv_message = QLabel("Select a source to inspect the available columns or files.")
         self.csv_message.setWordWrap(True)
+        layout.addWidget(_button("Check available import formats", self.refresh_capabilities))
         layout.addWidget(self.csv_message)
         self.tabs.addTab(page, "2 · Import")
         self.source_kind.currentIndexChanged.connect(self._update_source_kind)
@@ -481,6 +482,7 @@ class PreparationWindow(QDialog):
         self.preview_summary.setWordWrap(True)
         layout.addWidget(self.preview_summary)
         self.table = self.before_table
+        layout.addWidget(_button("Check available text tools and models", self.refresh_capabilities))
         self.tabs.addTab(page, "3 · Prepare")
         self._update_parameters()
 
