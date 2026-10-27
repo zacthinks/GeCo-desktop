@@ -250,3 +250,45 @@ def test_umap_for_geco_requests_teal_reusable_fitted_state(monkeypatch):
     assert result.params["reuse"] == "stored"
     assert result.params["storage"] == "compact"
     assert result.params["random_state"] == 42
+
+
+def test_capability_probe_is_read_only_and_reports_missing_optional_tools(monkeypatch):
+    tr = types.SimpleNamespace(
+        RegexCleaner=object, DelimiterDecomposer=object, CountVectorizer=object,
+        TfidfTransformer=object, SVD=object, UMAP=object,
+        SentenceTransformerEncoder=object, SpacyTranslator=object,
+        PdfTextExtractor=object,
+    )
+    monkeypatch.setitem(
+        sys.modules, "text_analysis_lab",
+        types.SimpleNamespace(translators=tr),
+    )
+    monkeypatch.setattr(
+        workflow, "_module_available",
+        lambda name: name not in {"pdfplumber", "sentence_transformers", "spacy"},
+    )
+    info = workflow.capabilities()
+    assert info["operations"]["count"]["available"] is True
+    assert info["operations"]["pattern"]["available"] is False
+    assert info["operations"]["sentence_embeddings"]["available"] is False
+    assert info["operations"]["spacy"]["available"] is False
+    assert info["imports"]["pdf"]["available"] is False
+
+
+def test_capability_probe_checks_cached_model_revision(monkeypatch):
+    tr = types.SimpleNamespace(
+        SentenceTransformerEncoder=object, SpacyTranslator=object
+    )
+    monkeypatch.setitem(
+        sys.modules, "text_analysis_lab",
+        types.SimpleNamespace(translators=tr),
+    )
+    monkeypatch.setattr(workflow, "_module_available", lambda name: True)
+    monkeypatch.setattr(
+        workflow, "_model_cached",
+        lambda model, revision: model == "my/model" and revision == "abc",
+    )
+    info = workflow.capabilities(model="my/model", revision="abc", spacy_model="spacy")
+    assert info["operations"]["sentence_embeddings"]["available"] is True
+    missing = workflow.capabilities(model="my/model", revision="other")
+    assert missing["operations"]["sentence_embeddings"]["available"] is False
