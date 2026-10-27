@@ -12,6 +12,7 @@ from typing import Any
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
+    QGroupBox,
     QComboBox,
     QDialog,
     QFileDialog,
@@ -123,7 +124,7 @@ class PreparationWindow(QDialog):
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Prepare a GeCo project")
+        self.setWindowTitle("Create a GeCo research project")
         self.resize(910, 700)
         self.environments = environments
         self.sessions = sessions
@@ -136,7 +137,7 @@ class PreparationWindow(QDialog):
         self.import_metadata: list[str] = []
 
         layout = QVBoxLayout(self)
-        layout.addWidget(QLabel("Create your project, prepare TeAL artifacts, then open GeCo."))
+        layout.addWidget(QLabel("Prepare research materials, then open your coding workspace."))
         self.tabs = QTabWidget()
         layout.addWidget(self.tabs)
         self._setup_page()
@@ -144,18 +145,20 @@ class PreparationWindow(QDialog):
         self._prepare_page()
         self._final_page()
         self.interrupted = QComboBox()
-        self.interrupted.addItem("No interrupted TeAL translations", "")
-        self.resume_button = _button("Resume selected TeAL operation", self.resume_teal_operation)
+        self.interrupted.addItem("No interrupted processing steps", "")
+        self.resume_button = _button("Resume selected processing step", self.resume_teal_operation)
         self.resume_button.setEnabled(False)
         layout.addWidget(_row(self.interrupted, self.resume_button))
-        self.status = QLabel("Choose a destination and a supported scientific runtime.")
+        self.status = QLabel("Choose a name and location for your research project.")
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
         if root is not None and descriptor is not None:
             self.project_name.setText(descriptor.name)
             self.destination.setText(str(root.parent))
             self._set_existing()
-            if (root / ".teal").is_dir():
+            if descriptor.state == "finalized":
+                self._show_finalized()
+            elif (root / ".teal").is_dir():
                 self.refresh_catalog()
             else:
                 self.status.setText("Project was interrupted before TeAL initialization. Use Initialize missing TeAL state.")
@@ -195,23 +198,24 @@ class PreparationWindow(QDialog):
         self.python = QLineEdit("3.11")
         self.teal = QLineEdit("0.9.0")
         self.geco = QLineEdit("0.8.15")
-        form.addRow("Scientific Python", self.python)
-        form.addRow("TeAL version", self.teal)
-        form.addRow("GeCo version", self.geco)
+        self.advanced_runtime = QGroupBox("Advanced · Software versions")
+        self.advanced_runtime.setCheckable(True)
+        self.advanced_runtime.setChecked(False)
+        advanced_form = QFormLayout(self.advanced_runtime)
+        advanced_form.addRow("Python version", self.python)
+        advanced_form.addRow("Text Analysis Lab version", self.teal)
+        advanced_form.addRow("Geometric Coder version", self.geco)
+        layout.addWidget(self.advanced_runtime)
         self.pdf_feature = QCheckBox("PDF text extraction")
         self.embeddings_feature = QCheckBox("SentenceTransformer embeddings")
         self.spacy_feature = QCheckBox("spaCy pipelines")
-        form.addRow("TeAL optional capabilities", self.pdf_feature)
+        form.addRow("Additional processing features", self.pdf_feature)
         form.addRow("", self.embeddings_feature)
         form.addRow("", self.spacy_feature)
-        layout.addWidget(QLabel(
-            "Optional capabilities use TeAL's published extras; choose them "
-            "before creating an immutable shared scientific environment."
-        ))
-        layout.addWidget(QLabel("The scientific environment is installed/reused outside the project folder."))
-        self.create_button = _button("Create project and provision environment", self.create_project)
+        layout.addWidget(QLabel("Select the text and document tools your research needs."))
+        self.create_button = _button("Create research project", self.create_project)
         layout.addWidget(self.create_button)
-        self.recover_button = _button("Initialize missing TeAL state", self.initialize_missing_teal)
+        self.recover_button = _button("Finish interrupted project setup", self.initialize_missing_teal)
         self.recover_button.setVisible(False)
         layout.addWidget(self.recover_button)
         layout.addStretch()
@@ -259,7 +263,7 @@ class PreparationWindow(QDialog):
             self.tabs.setCurrentIndex(1)
             self.refresh_catalog()
 
-        self._run(work, finished, message="Provisioning runtime and creating a TeAL project…")
+        self._run(work, finished, message="Setting up your research project…")
 
     def _set_existing(self) -> None:
         self.create_button.setEnabled(False)
@@ -324,7 +328,7 @@ class PreparationWindow(QDialog):
         self.metadata_label = QLabel("Metadata fields")
         form.addRow(self.text_label, self.text_columns)
         form.addRow(self.metadata_label, self.metadata_columns)
-        self.import_button = _button("Import into TeAL", self.import_documents)
+        self.import_button = _button("Import documents", self.import_documents)
         layout.addWidget(self.import_button)
         self.csv_message = QLabel("Select a source to inspect the available columns or files.")
         self.csv_message.setWordWrap(True)
@@ -380,6 +384,8 @@ class PreparationWindow(QDialog):
         ), finished, message="Inspecting source structure…")
 
     def import_documents(self) -> None:
+        if self.descriptor is not None and self.descriptor.state == "finalized":
+            return
         kind = str(self.source_kind.currentData())
         text = [x.text() for x in self.text_columns.selectedItems()]
         metadata = [x.text() for x in self.metadata_columns.selectedItems()]
@@ -408,7 +414,7 @@ class PreparationWindow(QDialog):
         page, layout, form = _form_page()
         self.source = QComboBox()
         self.source.currentIndexChanged.connect(self._update_fields)
-        form.addRow("Existing artifact", self.source)
+        form.addRow("Source or prepared data", self.source)
         self.operation = QComboBox()
         for label, value in (
             ("Regex cleaning", "clean"), ("Pattern extraction", "pattern"),
@@ -446,7 +452,7 @@ class PreparationWindow(QDialog):
             form.addRow(label, edit)
         self._prepare_form = form
         self.output_alias = QLineEdit("prepared")
-        form.addRow("Save as artifact", self.output_alias)
+        form.addRow("Save step as", self.output_alias)
         layout.addWidget(_row(
             _button("First rows", lambda: self.show_preview(False)),
             _button("Random sample", lambda: self.show_preview(True)),
@@ -564,6 +570,8 @@ class PreparationWindow(QDialog):
         ), done, message="Previewing the operation on a bounded sample…")
 
     def apply_operation(self) -> None:
+        if self.descriptor is not None and self.descriptor.state == "finalized":
+            return
         identifier = str(self.source.currentData() or "")
         if not identifier:
             return
@@ -594,19 +602,19 @@ class PreparationWindow(QDialog):
         self.projection = QComboBox()
         self.metadata_names = QLineEdit()
         for label, widget in (
-            ("Documents (key universe)", self.documents),
-            ("Prepared text artifact", self.text_artifact),
+            ("Source documents", self.documents),
+            ("Prepared texts", self.text_artifact),
             ("Text field", self.text_field),
-            ("Geometry", self.geometry),
-            ("Optional 2D view", self.projection),
+            ("Text representation", self.geometry),
+            ("Optional 2D map", self.projection),
             ("Metadata fields, comma separated", self.metadata_names),
         ):
             form.addRow(label, widget)
-        layout.addWidget(QLabel("Finalization links saved TeAL artifacts to a GeCo workspace. It never overwrites a workspace."))
+        layout.addWidget(QLabel("Review your texts and representation before creating the coding workspace."))
         layout.addWidget(_row(
             _button("Refresh review", self.refresh_catalog),
-            _button("Create GeCo workspace", self.finalize_project),
-            _button("Open GeCo in browser", self.launch_browser),
+            _button("Create coding workspace", self.finalize_project),
+            _button("Open coding workspace", self.launch_browser),
         ))
         layout.addStretch()
         self.tabs.addTab(page, "4 · Finalize")
@@ -637,7 +645,7 @@ class PreparationWindow(QDialog):
                 )
                 self.interrupted.addItem(label, operation["operation_id"])
             if not operations:
-                self.interrupted.addItem("No interrupted TeAL translations", "")
+                self.interrupted.addItem("No interrupted processing steps", "")
             self.resume_button.setEnabled(bool(operations))
             self.status.setText(f"{len(self.artifacts)} saved TeAL artifacts. {len(data['workspaces'])} linked GeCo workspace(s).")
             table = [a for a in self.artifacts if a["type"] in {"table", "jsonl"}]
@@ -660,6 +668,8 @@ class PreparationWindow(QDialog):
 
     def resume_teal_operation(self) -> None:
         """Ask TeAL to restore its persisted operation, without rebuilding its steps."""
+        if self.descriptor is not None and self.descriptor.state == "finalized":
+            return
         if self.root is None or self.interpreter is None:
             return
         operation_id = str(self.interrupted.currentData() or "")
@@ -683,8 +693,20 @@ class PreparationWindow(QDialog):
             message=f"Asking TeAL to resume operation {operation_id}…",
         )
 
+    def _show_finalized(self) -> None:
+        """Desktop preparation is finished once the TeAL-linked GeCo exists."""
+        self.tabs.setCurrentIndex(3)
+        for index in (0, 1, 2):
+            self.tabs.setTabEnabled(index, False)
+        self.interrupted.setEnabled(False)
+        self.resume_button.setEnabled(False)
+        self.status.setText("Your coding workspace is ready. Open it to begin coding.")
+
     def finalize_project(self) -> None:
         if self.root is None or self.descriptor is None:
+            return
+        if self.descriptor.state == "finalized":
+            self._show_finalized()
             return
         args = {
             "path": str(self.root),
@@ -701,7 +723,7 @@ class PreparationWindow(QDialog):
         def done(result):
             self.descriptor = replace(self.descriptor, state="finalized", last_artifact_id=args["text_id"])
             write_descriptor(self.root, self.descriptor, replace=True)
-            self.status.setText("Linked GeCo workspace is ready. Click Open GeCo in browser.")
+            self._show_finalized()
         self._run(lambda: self._command("finalize", timeout=1200, **args),
                   done, message="Validating and creating the linked GeCo workspace…")
 
