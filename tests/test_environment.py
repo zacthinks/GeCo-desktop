@@ -163,6 +163,7 @@ def test_staged_install_uses_portable_lock_without_modifying_it(tmp_path, monkey
         calls.append(args)
         if args[:1] == ("venv",):
             from pathlib import Path
+
             from geco_desktop.environments import interpreter_path
 
             target = Path(args[-1])
