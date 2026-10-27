@@ -72,3 +72,58 @@ def test_optional_teal_features_are_part_of_project_runtime_identity(tmp_path):
     manager = EnvironmentManager(base=tmp_path)
     assert manager.profile(richer).fingerprint != manager.profile(basic).fingerprint
     assert manager.profile(richer).packages == richer.locked_packages
+
+
+def test_repair_preserves_old_profile_when_staging_fails(tmp_path, monkeypatch):
+    manager = EnvironmentManager(base=tmp_path, uv="uv")
+    spec = RuntimeSpec("3.11", "0.9.0", "0.8.15")
+    profile = manager.profile(spec)
+    profile.path.mkdir(parents=True)
+    marker = profile.path / "old-content"
+    marker.write_text("preserved")
+
+    def fail(*args):
+        raise EnvironmentError("install failed")
+
+    monkeypatch.setattr(manager, "_uv", fail)
+    with pytest.raises(EnvironmentError, match="install failed"):
+        manager.repair(spec)
+    assert marker.read_text() == "preserved"
+    assert not list(profile.path.parent.glob("gecod-env-*"))
+
+
+def test_repair_rejects_ready_profile(tmp_path, monkeypatch):
+    manager = EnvironmentManager(base=tmp_path, uv="uv")
+    spec = RuntimeSpec("3.11", "0.9.0", "0.8.15")
+    profile = manager.profile(spec)
+    profile.python.parent.mkdir(parents=True)
+    profile.python.touch()
+    (profile.path / "profile.json").write_text(
+        json.dumps({"fingerprint": profile.fingerprint, "spec": spec.to_dict()})
+    )
+    monkeypatch.setattr(manager, "_uv", lambda *args: pytest.fail("unexpected install"))
+    with pytest.raises(EnvironmentError, match="already ready"):
+        manager.repair(spec)
+
+
+def test_repair_promotes_staged_profile_and_keeps_manifest(tmp_path, monkeypatch):
+    manager = EnvironmentManager(base=tmp_path, uv="uv")
+    spec = RuntimeSpec("3.11", "0.9.0", "0.8.15")
+    profile = manager.profile(spec)
+    profile.path.mkdir(parents=True)
+    (profile.path / "old-content").write_text("damaged")
+
+    def fake_uv(*args):
+        if args[0] == "venv":
+            env = __import__("pathlib").Path(args[-1])
+            interpreter = (
+                env / "Scripts" / "python.exe"
+                if __import__("os").name == "nt" else env / "bin" / "python"
+            )
+            interpreter.parent.mkdir(parents=True, exist_ok=True)
+            interpreter.touch()
+
+    monkeypatch.setattr(manager, "_uv", fake_uv)
+    assert manager.repair(spec) == profile.python
+    assert not (profile.path / "old-content").exists()
+    assert manager.locate(spec) == profile.python
