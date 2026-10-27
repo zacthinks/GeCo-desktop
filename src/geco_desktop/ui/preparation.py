@@ -362,6 +362,8 @@ class PreparationWindow(QDialog):
     def choose_csv(self) -> None:
         kind = str(self.source_kind.currentData())
         recursive = self.recursive.isChecked()
+        if kind.startswith("pdf") and not self._capability_allowed(kind=kind, operation=False):
+            return
         if kind.endswith("_folder"):
             path = QFileDialog.getExistingDirectory(self, "Choose source folder")
         else:
