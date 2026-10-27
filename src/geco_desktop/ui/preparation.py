@@ -135,6 +135,7 @@ class PreparationWindow(QDialog):
         self._jobs: list[_Work] = []
         self.artifacts: list[dict] = []
         self.import_metadata: list[str] = []
+        self.capability_info: dict[str, Any] | None = None
 
         layout = QVBoxLayout(self)
         layout.addWidget(QLabel("Prepare research materials, then open your coding workspace."))
@@ -160,6 +161,7 @@ class PreparationWindow(QDialog):
                 self._show_finalized()
             elif (root / ".teal").is_dir():
                 self.refresh_catalog()
+                self.refresh_capabilities()
             else:
                 self.status.setText("Project was interrupted before TeAL initialization. Use Initialize missing TeAL state.")
 
@@ -267,6 +269,7 @@ class PreparationWindow(QDialog):
             self.status.setText(f"Project created: {self.root}")
             self.tabs.setCurrentIndex(1)
             self.refresh_catalog()
+            self.refresh_capabilities()
 
         self._run(work, finished, message="Setting up your research project…")
 
@@ -304,6 +307,7 @@ class PreparationWindow(QDialog):
             self.recover_button.setVisible(False)
             self.tabs.setCurrentIndex(1)
             self.refresh_catalog()
+            self.refresh_capabilities()
         self._run(lambda: self._command(
             "create_teal", path=str(self.root), name=self.descriptor.name
         ), done, message="Initializing missing TeAL project state…")
@@ -397,6 +401,8 @@ class PreparationWindow(QDialog):
         if kind not in {"txt", "txt_folder", "pdf", "pdf_folder"} and not text:
             QMessageBox.warning(self, "Import", "Select at least one text field.")
             return
+        if kind.startswith("pdf") and not self._capability_allowed(kind=kind, operation=False):
+            return
         if set(text) & set(metadata):
             QMessageBox.warning(self, "Import", "A field cannot be text and metadata simultaneously.")
             return
@@ -478,6 +484,59 @@ class PreparationWindow(QDialog):
         self.tabs.addTab(page, "3 · Prepare")
         self._update_parameters()
 
+    def refresh_capabilities(self) -> None:
+        if self.interpreter is None or self.descriptor is None:
+            return
+        model = self.inputs["model"].text().strip()
+        revision = self.inputs["revision"].text().strip() or None
+        spacy_model = self.inputs["spacy_model"].text().strip()
+        self.capability_info = None
+        self.import_button.setEnabled(False)
+        self._run(
+            lambda: self._command(
+                "capabilities", model=model, revision=revision,
+                spacy_model=spacy_model,
+            ),
+            self._set_capabilities,
+            message="Checking available document and text tools…",
+        )
+
+    def _set_capabilities(self, info: dict[str, Any]) -> None:
+        self.capability_info = info
+        for index in range(self.operation.count()):
+            kind = self.operation.itemData(index)
+            item = info["operations"].get(kind, {})
+            available = bool(item.get("available"))
+            self.operation.setItemData(index, available, 256 + 1)
+            self.operation.setItemData(index, item.get("reason", ""), 3)
+        for index in range(self.source_kind.count()):
+            kind = self.source_kind.itemData(index)
+            state = info["imports"].get("pdf", {"available": True})
+            available = not str(kind).startswith("pdf") or bool(state["available"])
+            self.source_kind.setItemData(index, available, 256 + 1)
+            self.source_kind.setItemData(
+                index, "" if available else state.get("reason", ""), 3,
+            )
+        self._update_parameters()
+        self._update_source_kind()
+
+    def _capability_allowed(self, *, kind: str, operation: bool) -> bool:
+        if self.capability_info is None:
+            self.status.setText("Checking tool availability. Try again shortly.")
+            return False
+        states = (
+            self.capability_info["operations"] if operation
+            else self.capability_info["imports"]
+        )
+        key = kind if operation else "pdf"
+        state = states.get(key, {"available": True})
+        if state.get("available", False):
+            return True
+        message = str(state.get("reason") or "This feature is unavailable.")
+        self.status.setText(message)
+        QMessageBox.warning(self, "Feature unavailable", message)
+        return False
+
     def _update_fields(self) -> None:
         source = self._artifact(self.source.currentData())
         previous = self.field.currentText()
@@ -555,6 +614,8 @@ class PreparationWindow(QDialog):
         if not identifier:
             return
         kind = str(self.operation.currentData())
+        if not self._capability_allowed(kind=kind, operation=True):
+            return
         field = self.field.currentText()
         options = self._options()
         root = str(self.root)
@@ -581,6 +642,8 @@ class PreparationWindow(QDialog):
         if not identifier:
             return
         kind = str(self.operation.currentData())
+        if not self._capability_allowed(kind=kind, operation=True):
+            return
         alias = self.output_alias.text().strip()
         field = self.field.currentText()
         options = self._options()
