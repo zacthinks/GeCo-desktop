@@ -239,10 +239,13 @@ class PreparationWindow(QDialog):
         )
 
         def work():
-            interpreter = self.environments.ensure(spec)
+            # Resolve before writing the portable project descriptor, so
+            # copied projects retain the same transitive scientific versions.
+            locked_spec = self.environments.resolve(spec)
+            interpreter = self.environments.ensure(locked_spec)
             # No replacement of a prior project or existing directory.
             root.mkdir(parents=True, exist_ok=False)
-            descriptor = ProjectDescriptor.new(name, spec)
+            descriptor = ProjectDescriptor.new(name, locked_spec)
             write_descriptor(root, descriptor)
             run_command(interpreter, installed_runner_path(), "create_teal", timeout=120,
                         path=str(root), name=name)
