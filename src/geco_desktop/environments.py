@@ -10,9 +10,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from dataclasses import replace
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from filelock import FileLock
