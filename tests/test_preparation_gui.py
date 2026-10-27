@@ -174,3 +174,43 @@ def test_missing_science_runtime_install_reopens_project(tmp_path, monkeypatch):
         assert reopened == [str(root)]
     finally:
         window.close()
+
+
+def test_incomplete_runtime_repair_requires_consent(tmp_path, monkeypatch):
+    qtwidgets = pytest.importorskip("PySide6.QtWidgets")
+    from geco_desktop.project import ProjectDescriptor, RuntimeSpec
+    from geco_desktop.ui.main_window import MainWindow
+
+    app = qtwidgets.QApplication.instance() or qtwidgets.QApplication([])
+    assert app is not None
+    window = MainWindow()
+    descriptor = ProjectDescriptor.new("Repair", RuntimeSpec("3.11", "0.9.0", "0.8.15"))
+    calls = []
+
+    class Manager:
+        def profile(self, runtime):
+            from types import SimpleNamespace
+            return SimpleNamespace(path=tmp_path / "incomplete")
+
+        def repair(self, runtime):
+            calls.append(runtime)
+            return tmp_path / "python"
+
+    window.environments = Manager()
+    monkeypatch.setattr(window, "_background", lambda work, done: done(work()))
+    monkeypatch.setattr(window, "open_project_path", lambda path: calls.append(path))
+    monkeypatch.setattr(
+        qtwidgets.QMessageBox, "question",
+        lambda *args, **kwargs: qtwidgets.QMessageBox.StandardButton.No,
+    )
+    try:
+        window._offer_runtime_repair(tmp_path, descriptor)
+        assert calls == []
+        monkeypatch.setattr(
+            qtwidgets.QMessageBox, "question",
+            lambda *args, **kwargs: qtwidgets.QMessageBox.StandardButton.Yes,
+        )
+        window._offer_runtime_repair(tmp_path, descriptor)
+        assert calls == [descriptor.runtime, str(tmp_path)]
+    finally:
+        window.close()
