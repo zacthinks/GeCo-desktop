@@ -567,6 +567,115 @@ def finalize(
         handle.close()
         return {"workspace": "desktop", "already_exists": False}
 
+def _module_available(name: str) -> bool:
+    """Inspect an optional dependency without importing its heavyweight runtime."""
+    from importlib.util import find_spec
+
+    try:
+        return find_spec(name) is not None
+    except (ImportError, ModuleNotFoundError, ValueError):
+        return False
+
+
+def _model_cached(model: str, revision: str | None) -> bool:
+    """Recognize local model folders and immutable Hub cache snapshots, offline."""
+    source = str(model).strip()
+    if not source:
+        return False
+    if Path(source).is_dir():
+        return True
+    try:
+        from huggingface_hub import constants, scan_cache_dir
+    except ImportError:
+        return False
+    if not Path(constants.HF_HUB_CACHE).is_dir():
+        return False
+    try:
+        for repo in scan_cache_dir().repos:
+            if repo.repo_type != "model" or repo.repo_id != source:
+                continue
+            for snapshot in repo.revisions:
+                if revision is None or revision == snapshot.commit_hash or revision in snapshot.refs:
+                    return True
+    except (OSError, ValueError):
+        return False
+    return False
+
+
+def capabilities(
+    model: str = "sentence-transformers/all-MiniLM-L6-v2",
+    revision: str | None = None,
+    spacy_model: str = "en_core_web_sm",
+) -> dict[str, Any]:
+    """Read-only capability inspection in the selected scientific interpreter.
+
+    This never downloads models or installs Python packages. A cached model
+    snapshot is evidence of local availability, not proof of model loadability.
+    """
+    from text_analysis_lab import translators as tr
+
+    def state(ok: bool, reason: str = "") -> dict[str, Any]:
+        return {"available": bool(ok), "reason": "" if ok else reason}
+
+    ops: dict[str, dict[str, Any]] = {}
+    names = {
+        "clean": "RegexCleaner",
+        "pattern": "PatternExtractor",
+        "split": "DelimiterDecomposer",
+        "count": "CountVectorizer",
+        "tfidf": "TfidfTransformer",
+        "svd": "SVD",
+        "umap": "UMAP",
+        "sentence_embeddings": "SentenceTransformerEncoder",
+        "spacy": "SpacyTranslator",
+    }
+    for kind, cls in names.items():
+        ops[kind] = state(
+            callable(getattr(tr, cls, None)),
+            f"This Text Analysis Lab version does not provide {cls}. "
+            "Choose a compatible scientific environment for a new project.",
+        )
+
+    pdf = state(
+        callable(getattr(tr, "PdfTextExtractor", None)) and _module_available("pdfplumber"),
+        "PDF extraction is not installed in this project. "
+        "Enable PDF text extraction when creating a new project.",
+    )
+
+    if ops["sentence_embeddings"]["available"]:
+        dependencies = all(
+            _module_available(name)
+            for name in ("sentence_transformers", "huggingface_hub")
+        )
+        if not dependencies:
+            ops["sentence_embeddings"] = state(
+                False, "Sentence embeddings require the additional embeddings "
+                "feature when creating a project."
+            )
+        elif not _model_cached(model, revision):
+            ops["sentence_embeddings"] = state(
+                False, f"Model {model!r} does not have a matching cached revision. "
+                "Download it in Model Manager before using sentence embeddings."
+            )
+
+    if ops["spacy"]["available"]:
+        if not _module_available("spacy"):
+            ops["spacy"] = state(
+                False, "spaCy support is not installed. Enable it when creating a project."
+            )
+        else:
+            configured = str(spacy_model).strip()
+            if not configured or not (
+                Path(configured).is_dir() or _module_available(configured)
+            ):
+                ops["spacy"] = state(
+                    False, f"spaCy model {configured!r} is not installed in this "
+                    "scientific environment. Install a compatible model package first."
+                )
+
+    return {"imports": {"pdf": pdf}, "operations": ops}
+
+
 def model_inventory() -> dict[str, Any]:
     """Read shared Hugging Face snapshots using the installed Hub API."""
     try:
