@@ -520,11 +520,17 @@ class PreparationWindow(QDialog):
                 "capabilities", model=model, revision=revision,
                 spacy_model=spacy_model,
             ),
-            self._set_capabilities,
+            lambda info: self._set_capabilities(info, checked=(model, revision, spacy_model)),
             message="Checking available document and text tools…",
         )
 
-    def _set_capabilities(self, info: dict[str, Any]) -> None:
+    def _set_capabilities(
+        self, info: dict[str, Any], *,
+        checked: tuple[str, str | None, str] | None = None,
+    ) -> None:
+        if checked is not None and checked != self._model_settings():
+            # Discard a response for inputs the researcher has since edited.
+            return
         self.capability_info = info
         self._checked_model_settings = self._model_settings()
         for index in range(self.operation.count()):
