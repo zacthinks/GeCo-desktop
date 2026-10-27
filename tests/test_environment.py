@@ -138,7 +138,7 @@ def test_portable_resolution_is_persisted_and_reused(tmp_path, monkeypatch):
         commands.append(args)
         if args[:2] == ("pip", "compile"):
             output = __import__("pathlib").Path(args[args.index("--output-file") + 1])
-            output.write_text("geometric-coder==0.8.15\\ntext-analysis-lab==0.9.0\\n")
+            output.write_text("geometric-coder==0.8.15\ntext-analysis-lab==0.9.0\n")
 
     monkeypatch.setattr(manager, "_uv", fake_uv)
     locked = manager.resolve(spec)
@@ -155,7 +155,7 @@ def test_staged_install_uses_portable_lock_without_modifying_it(tmp_path, monkey
     manager = EnvironmentManager(base=tmp_path, uv="uv")
     spec = RuntimeSpec(
         "3.11", "0.9.0", "0.8.15",
-        resolved_requirements="geometric-coder==0.8.15\\ntext-analysis-lab==0.9.0\\n",
+        resolved_requirements="geometric-coder==0.8.15\ntext-analysis-lab==0.9.0\n",
     )
     calls = []
 
