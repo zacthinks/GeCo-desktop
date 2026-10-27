@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -139,12 +140,77 @@ class EnvironmentManager:
             env_dir.mkdir(parents=True, exist_ok=True)
             staged = Path(tempfile.mkdtemp(prefix="gecod-env-", dir=env_dir))
             try:
-                self._uv("venv", "--python", spec.python, str(staged))
-                self._uv("pip", "install", "--python", str(interpreter_path(staged)), *profile.packages)
-                manifest = {"fingerprint": profile.fingerprint, "spec": spec.to_dict()}
-                (staged / "profile.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
-                # Atomically publish only after the complete environment exists.
+                self._install_staged(spec, profile, staged)
+                # Publish only after the complete environment exists.
                 staged.rename(profile.path)
+            finally:
+                if staged.exists():
+                    shutil.rmtree(staged)
+        return self.locate(spec)
+
+    def _install_staged(
+        self, spec: RuntimeSpec, profile: RuntimeProfile, staged: Path
+    ) -> None:
+        """Populate an unpublished profile using only the selected Python runtime."""
+        self._uv("venv", "--python", spec.python, str(staged))
+        self._uv(
+            "pip", "install", "--python", str(interpreter_path(staged)),
+            *profile.packages,
+        )
+        manifest = {"fingerprint": profile.fingerprint, "spec": spec.to_dict()}
+        (staged / "profile.json").write_text(
+            json.dumps(manifest, indent=2), encoding="utf-8"
+        )
+
+    def repair(self, spec: RuntimeSpec) -> Path:
+        """Explicitly replace a broken profile, preserving the old one on failure.
+
+        Never mutate a valid environment. Build an entire replacement in staging
+        before moving the incomplete profile into a separate recovery directory.
+        This operation is always user-approved by the Desktop UI.
+        """
+        profile = self.profile(spec)
+        self.base.mkdir(parents=True, exist_ok=True)
+        with FileLock(str(self.base / "install.lock")):
+            try:
+                self.locate(spec)
+            except EnvironmentError:
+                pass
+            else:
+                raise EnvironmentError("Scientific environment is already ready; no repair needed")
+            if not profile.path.is_dir() or profile.path.is_symlink():
+                raise EnvironmentError(
+                    "Repair requires an existing ordinary environment directory; "
+                    "install a missing environment instead"
+                )
+            if not self.uv:
+                raise EnvironmentError("uv is needed to repair the scientific environment")
+
+            env_dir = profile.path.parent
+            staged = Path(tempfile.mkdtemp(prefix="gecod-env-", dir=env_dir))
+            backup = (
+                self.base / "environment-repair-backups"
+                / f"{profile.fingerprint}-{uuid.uuid4().hex}"
+            )
+            try:
+                self._install_staged(spec, profile, staged)
+                backup.parent.mkdir(parents=True, exist_ok=True)
+                profile.path.rename(backup)
+                try:
+                    staged.rename(profile.path)
+                    self.locate(spec)
+                except Exception:
+                    # Restore the prior directory when promotion/validation fails.
+                    if profile.path.exists():
+                        shutil.rmtree(profile.path)
+                    backup.rename(profile.path)
+                    raise
+                try:
+                    shutil.rmtree(backup)
+                except OSError:
+                    # An open handle (particularly on Windows) may delay cleanup.
+                    # A leftover recovery backup is outside the active profiles.
+                    pass
             finally:
                 if staged.exists():
                     shutil.rmtree(staged)
