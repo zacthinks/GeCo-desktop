@@ -30,6 +30,12 @@ def main() -> int:
         manager = EnvironmentManager()
         if not manager.uv or not Path(manager.uv).is_file():
             raise RuntimeError("Missing bundled uv provisioner")
+        wheels = manager.wheelhouse
+        if wheels is None or not all(
+            any(file.name.startswith(prefix) for file in wheels.glob("*.whl"))
+            for prefix in ("text_analysis_lab-0.9.0-", "geometric_coder-0.8.15-")
+        ):
+            raise RuntimeError("Missing verified bundled scientific packages")
         QTimer.singleShot(300, app.quit)
         app.exec()
         window.close()
