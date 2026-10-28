@@ -7,11 +7,11 @@ All environments and diagnostics are in CI temp storage, never the .gecod folder
 from __future__ import annotations
 
 import argparse
-from dataclasses import replace
 import hashlib
 import shutil
 import subprocess
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 from geco_desktop.environments import (
