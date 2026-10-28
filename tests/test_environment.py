@@ -180,3 +180,46 @@ def test_staged_install_uses_portable_lock_without_modifying_it(tmp_path, monkey
     assert "--requirement" in calls[-1]
     assert manager.locate(spec) == installed
     assert not list(manager.profile(spec).path.parent.glob("*-requirements.txt"))
+
+
+def test_scientific_wheelhouse_is_used_for_resolution_and_install(tmp_path, monkeypatch):
+    wheels = tmp_path / "science-wheels"
+    wheels.mkdir()
+    manager = EnvironmentManager(base=tmp_path / "profiles", uv="uv", wheelhouse=wheels)
+    spec = RuntimeSpec("3.11", "0.9.0", "0.8.15")
+    calls = []
+
+    def fake_uv(*args):
+        calls.append(args)
+        if args[:2] == ("pip", "compile"):
+            from pathlib import Path
+
+            output = Path(args[args.index("--output-file") + 1])
+            output.write_text("geometric-coder==0.8.15\ntext-analysis-lab==0.9.0\n")
+        if args[:1] == ("venv",):
+            from pathlib import Path
+
+            from geco_desktop.environments import interpreter_path
+
+            interpreter = interpreter_path(Path(args[-1]))
+            interpreter.parent.mkdir(parents=True)
+            interpreter.touch()
+
+    monkeypatch.setattr(manager, "_uv", fake_uv)
+    resolved = manager.resolve(spec)
+    python = manager.ensure(resolved)
+    assert python.is_file()
+    assert len(calls) == 3
+    for args in (calls[0], calls[-1]):
+        assert args[args.index("--find-links") + 1] == str(wheels)
+
+
+def test_missing_science_wheelhouse_fails_before_resolve(tmp_path, monkeypatch):
+    manager = EnvironmentManager(
+        base=tmp_path, uv="uv", wheelhouse=tmp_path / "missing-wheels"
+    )
+    monkeypatch.setattr(
+        manager, "_uv", lambda *args: pytest.fail("unexpected dependency resolution")
+    )
+    with pytest.raises(EnvironmentError, match="bundled scientific packages are missing"):
+        manager.resolve(RuntimeSpec("3.11", "0.9.0", "0.8.15"))
