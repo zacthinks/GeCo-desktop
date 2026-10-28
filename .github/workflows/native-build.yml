@@ -54,7 +54,19 @@ jobs:
           )
           assert runners, "Missing app runner resource"
           science_wheels = list(root.rglob("science-wheels/*.whl"))
-          assert len(science_wheels) == 2, science_wheels
+          expected = {
+              "geometric_coder-0.8.15-py3-none-any.whl",
+              "text_analysis_lab-0.9.0-py3-none-any.whl",
+          }
+          # PyInstaller's macOS app bundle exposes Resources, Frameworks and
+          # onedir copies/symlinks of the same two wheel distributions.
+          assert {wheel.name for wheel in science_wheels} == expected, science_wheels
+          bundle_wheels = (
+              root / "GeCo Desktop" / "_internal" / "science-wheels"
+              if os.name == "nt"
+              else root / "GeCo Desktop.app" / "Contents" / "Frameworks" / "science-wheels"
+          )
+          assert {wheel.name for wheel in bundle_wheels.glob("*.whl")} == expected, bundle_wheels
           assert workflows, "Missing workflow resource"
           assert uv, f"Missing uv binary at expected frozen resource location: {windows_uv}"
       - name: Smoke-check real frozen application
