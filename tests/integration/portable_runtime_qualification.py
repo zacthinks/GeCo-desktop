@@ -7,6 +7,7 @@ All environments and diagnostics are in CI temp storage, never the .gecod folder
 from __future__ import annotations
 
 import argparse
+from dataclasses import replace
 import hashlib
 import shutil
 import subprocess
@@ -22,11 +23,20 @@ from geco_desktop.environments import (
 from geco_desktop.project import ProjectDescriptor, read_descriptor, write_descriptor
 
 
-def resolve(output: Path, *, uv: str, pdf: bool) -> None:
+def resolve(output: Path, *, uv: str, pdf: bool, pinned_git: bool) -> None:
     manager = EnvironmentManager(base=output / "profiles", uv=uv)
     requested = runtime_with_features(
         "3.11", "0.9.0", "0.8.15", pdf=pdf,
     )
+    if pinned_git:
+        # CI-only qualification of known tested sources until releases exist.
+        # Never substitute these URLs for the normal user-facing defaults.
+        requested = replace(requested, locked_packages=(
+            "text-analysis-lab[pdf] @ git+https://github.com/zacthinks/"
+            "text-analysis-lab.git@8213b726b2a6b766b6764bf9bb11427bf841edc8",
+            "geometric-coder @ git+https://github.com/zacthinks/"
+            "GeCo.git@4fede56f1943b9c1f74c219ebe1785d266363822",
+        ))
     locked = manager.resolve(requested)
     assert locked.resolved_requirements, "Universal resolver did not return a lock"
     assert manager.resolve(locked) == locked, "Locked profile must not re-resolve"
@@ -102,11 +112,12 @@ def main() -> None:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--project", type=Path)
     parser.add_argument("--pdf", action="store_true")
+    parser.add_argument("--pinned-git", action="store_true")
     args = parser.parse_args()
     args.output = args.output.absolute()
     args.output.mkdir(parents=True, exist_ok=True)
     if args.step == "resolve":
-        resolve(args.output, uv=args.uv, pdf=args.pdf)
+        resolve(args.output, uv=args.uv, pdf=args.pdf, pinned_git=args.pinned_git)
     else:
         if args.project is None:
             parser.error("--project is required for install")
