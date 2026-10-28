@@ -31,6 +31,8 @@ jobs:
       - uses: astral-sh/setup-uv@v6
       - name: Install GUI and native builder
         run: python -m pip install -e ".[gui]" "pyinstaller>=6.10,<7"
+      - name: Build pinned science wheels
+        run: python packaging/build_science_wheels.py --output science-wheels
       - name: Build standalone GUI
         run: python packaging/build.py --output dist-native
       - name: Validate bundled runner resources
@@ -49,6 +51,8 @@ jobs:
               else any(p.is_file() for p in root.rglob("uv"))
           )
           assert runners, "Missing app runner resource"
+          science_wheels = list(root.rglob("science-wheels/*.whl"))
+          assert len(science_wheels) == 2, science_wheels
           assert workflows, "Missing workflow resource"
           assert uv, f"Missing uv binary at expected frozen resource location: {windows_uv}"
       - name: Smoke-check real frozen application
