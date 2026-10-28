@@ -15,6 +15,27 @@ def main() -> int:
 
     from .ui.main_window import MainWindow
 
+    # Installer qualification checks the real frozen GUI and its app-owned
+    # runtime resources, without creating projects or downloading science.
+    if len(sys.argv) == 3 and sys.argv[1] == "--self-check":
+        from pathlib import Path
+
+        from .environments import EnvironmentManager, installed_runner_path
+
+        app = QApplication(sys.argv[:1])
+        window = MainWindow()
+        runner = installed_runner_path()
+        if not runner.with_name("workflow.py").is_file():
+            raise RuntimeError("Missing app-owned scientific workflow resource")
+        manager = EnvironmentManager()
+        if not manager.uv or not Path(manager.uv).is_file():
+            raise RuntimeError("Missing bundled uv provisioner")
+        QTimer.singleShot(300, app.quit)
+        app.exec()
+        window.close()
+        Path(sys.argv[2]).write_text("GeCo Desktop native self-check passed\\n", encoding="utf-8")
+        return 0
+
     app = QApplication(sys.argv)
     window = MainWindow()
     window.show()
