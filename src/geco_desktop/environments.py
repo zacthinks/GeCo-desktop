@@ -99,7 +99,10 @@ def runtime_with_features(
 
 
 class EnvironmentManager:
-    def __init__(self, base: Path | None = None, uv: str | None = None) -> None:
+    def __init__(
+        self, base: Path | None = None, uv: str | None = None,
+        wheelhouse: Path | None = None,
+    ) -> None:
         self.base = Path(base) if base is not None else application_data()
         bundled_root = Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))
         bundled_uv = bundled_root / ("uv.exe" if os.name == "nt" else "uv")
@@ -108,6 +111,24 @@ class EnvironmentManager:
             or (str(bundled_uv) if bundled_uv.is_file() else None)
             or shutil.which("uv")
         )
+        # The native app bundles audited, pure-Python GeCo and TeAL wheels.
+        # Unlike a Git URL, these require neither Git nor a package-registry
+        # publication on the researcher's machine. No wheels enter .gecod.
+        bundled_wheels = bundled_root / "science-wheels"
+        self.wheelhouse = (
+            Path(wheelhouse) if wheelhouse is not None
+            else bundled_wheels if getattr(sys, "frozen", False) else None
+        )
+
+    def _wheel_links(self) -> tuple[str, ...]:
+        if self.wheelhouse is None:
+            return ()
+        if not self.wheelhouse.is_dir():
+            raise EnvironmentError(
+                f"The application's bundled scientific packages are missing: {self.wheelhouse}"
+            )
+        return ("--find-links", str(self.wheelhouse))
+
 
     def resolve(self, spec: RuntimeSpec) -> RuntimeSpec:
         """Resolve one portable, transitive requirements snapshot with uv.
@@ -126,7 +147,7 @@ class EnvironmentManager:
             source.write_text("\n".join(self.profile(spec).packages) + "\n", encoding="utf-8")
             self._uv(
                 "pip", "compile", "--universal", "--python-version", spec.python,
-                "--output-file", str(output), str(source),
+                *self._wheel_links(), "--output-file", str(output), str(source),
             )
             result = output.read_text(encoding="utf-8")
         if not result.strip():
@@ -183,7 +204,7 @@ class EnvironmentManager:
                 lock_file.write_text(spec.resolved_requirements, encoding="utf-8")
                 self._uv(
                     "pip", "install", "--python", str(interpreter_path(staged)),
-                    "--requirement", str(lock_file),
+                    *self._wheel_links(), "--requirement", str(lock_file),
                 )
             finally:
                 lock_file.unlink(missing_ok=True)
@@ -191,7 +212,7 @@ class EnvironmentManager:
             # Legacy descriptors, issued before portable locks, remain readable.
             self._uv(
                 "pip", "install", "--python", str(interpreter_path(staged)),
-                *profile.packages,
+                *self._wheel_links(), *profile.packages,
             )
         manifest = {"fingerprint": profile.fingerprint, "spec": spec.to_dict()}
         (staged / "profile.json").write_text(
