@@ -28,7 +28,7 @@ jobs:
         run: python -m pip install -e .
       - name: Resolve universal runtime lock and create portable descriptor
         run: |
-          python -u tests/integration/portable_runtime_qualification.py resolve --output portable-source --pdf
+          python -u tests/integration/portable_runtime_qualification.py resolve --output portable-source --pdf --pinned-git
       - uses: actions/upload-artifact@v4
         with:
           name: portable-science-descriptor
