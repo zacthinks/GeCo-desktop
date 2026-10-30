@@ -95,6 +95,12 @@ jobs:
       - name: Build macOS DMG
         if: runner.os == 'macOS'
         run: python packaging/macos_dmg.py --source dist-native --output native-installers
+      - name: Qualify installed Windows application and file association
+        if: runner.os == 'Windows'
+        run: python -u tests/integration/native_installer_qualification.py --installer native-installers/GeCoDesktop-Windows-Setup.exe
+      - name: Qualify application copied from macOS DMG
+        if: runner.os == 'macOS'
+        run: python -u tests/integration/native_installer_qualification.py --installer native-installers/GeCoDesktop-macOS.dmg
       - name: Upload native app and test installer
         uses: actions/upload-artifact@v4
         with:
