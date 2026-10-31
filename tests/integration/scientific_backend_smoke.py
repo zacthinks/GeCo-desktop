@@ -20,6 +20,7 @@ from geco_desktop.project import (
     reconcile_finalization,
     write_descriptor,
 )
+from geco_desktop.science_releases import DEFAULT_PYTHON, GECO, TEAL
 from geco_desktop.sessions import SessionManager
 
 
@@ -85,6 +86,26 @@ def smoke(science_python: Path, output_root: Path) -> None:
         pattern=r"\s+", replacement=" ", output_field="text",
     )
     assert cleaned["rows"] == 36, cleaned
+    # Exercise TeAL's released PatternExtractor through the real Desktop
+    # runner. Capture data and metadata, with no preview persistence.
+    pattern = r"Document (?P<metadata_document_number>\\d+)\\s+describes\\s+a (?P<data_animal>\\w+)\\. (?P<data_details>.*)"
+    pattern_options = {"pattern": pattern, "on_unmatched": "fail"}
+    pattern_preview = command(
+        "preview_step", artifact_id=cleaned["id"], kind="pattern",
+        field="text", options=pattern_options,
+    )
+    assert pattern_preview["sample_only"] is True
+    assert pattern_preview["candidate_rows"] == 12
+    assert "animal" in pattern_preview["after_columns"]
+    assert "metadata.document_number" in pattern_preview["after_columns"]
+    assert len(command("catalog")["artifacts"]) == 2, "Pattern preview wrote artifacts"
+    extracted = apply(
+        "pattern", cleaned["id"], "extracted", field="text", **pattern_options
+    )
+    assert extracted["rows"] == 36, extracted
+    extracted_preview = command("preview", artifact_id=extracted["id"], n=4)
+    assert "animal" in extracted_preview["columns"]
+    assert any("document_number" in name for name in extracted_preview["columns"])
     counts = apply("count", cleaned["id"], "counts", field="text", max_features=100)
     tfidf = apply("tfidf", counts["id"], "tfidf", norm="l2")
     svd = apply("svd", tfidf["id"], "svd", n_components=2)
@@ -108,7 +129,7 @@ def smoke(science_python: Path, output_root: Path) -> None:
     descriptor = replace(
         ProjectDescriptor.new(
             "Scientific backend",
-            RuntimeSpec(python="3.11", teal="0.9.0", geco="0.8.15"),
+            RuntimeSpec(python=DEFAULT_PYTHON, teal=TEAL.version, geco=GECO.version),
         ),
         state="finalized", last_artifact_id=cleaned["id"],
     )
@@ -137,7 +158,7 @@ def smoke(science_python: Path, output_root: Path) -> None:
     reopened = run_command(science_python, runner, "project_info", path=str(moved))
     assert [item["name"] for item in reopened["workspaces"]] == ["desktop"], reopened
     after_move = run_command(science_python, runner, "catalog", path=str(moved))
-    assert len(after_move["artifacts"]) >= 6, after_move
+    assert len(after_move["artifacts"]) >= 7, after_move
     print("PASS: real runner, TeAL artifacts, GeCo, session and moved project", flush=True)
 
 
