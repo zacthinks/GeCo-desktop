@@ -37,6 +37,7 @@ from geco_desktop.environments import (
     runtime_with_features,
 )
 from geco_desktop.project import ProjectDescriptor, write_descriptor
+from geco_desktop.science_releases import DEFAULT_PYTHON, GECO, TEAL
 from geco_desktop.sessions import SessionManager
 
 
@@ -198,9 +199,9 @@ class PreparationWindow(QDialog):
         self.destination = QLineEdit(str(Path.home() / "Documents"))
         form.addRow("Project name", self.project_name)
         form.addRow("Parent folder", _row(self.destination, _button("Browse…", self.choose_destination)))
-        self.python = QLineEdit("3.11")
-        self.teal = QLineEdit("0.9.0")
-        self.geco = QLineEdit("0.8.15")
+        self.python = QLineEdit(DEFAULT_PYTHON)
+        self.teal = QLineEdit(TEAL.version)
+        self.geco = QLineEdit(GECO.version)
         self.advanced_runtime = QGroupBox("Advanced · Software versions")
         self.advanced_runtime.setCheckable(True)
         self.advanced_runtime.setChecked(False)
