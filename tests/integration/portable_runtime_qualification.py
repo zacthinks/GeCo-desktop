@@ -21,21 +21,20 @@ from geco_desktop.environments import (
     runtime_with_features,
 )
 from geco_desktop.project import ProjectDescriptor, read_descriptor, write_descriptor
+from geco_desktop.science_releases import DEFAULT_PYTHON, GECO, TEAL
 
 
 def resolve(output: Path, *, uv: str, pdf: bool, pinned_git: bool) -> None:
     manager = EnvironmentManager(base=output / "profiles", uv=uv)
     requested = runtime_with_features(
-        "3.11", "0.9.0", "0.8.15", pdf=pdf,
+        DEFAULT_PYTHON, TEAL.version, GECO.version, pdf=pdf,
     )
     if pinned_git:
         # CI-only qualification of known tested sources until releases exist.
         # Never substitute these URLs for the normal user-facing defaults.
         requested = replace(requested, locked_packages=(
-            "text-analysis-lab[pdf] @ git+https://github.com/zacthinks/"
-            "text-analysis-lab.git@8213b726b2a6b766b6764bf9bb11427bf841edc8",
-            "geometric-coder @ git+https://github.com/zacthinks/"
-            "GeCo.git@4fede56f1943b9c1f74c219ebe1785d266363822",
+            f"text-analysis-lab[pdf] @ git+https://github.com/{TEAL.repository}.git@{TEAL.commit}",
+            f"geometric-coder @ git+https://github.com/{GECO.repository}.git@{GECO.commit}",
         ))
     locked = manager.resolve(requested)
     assert locked.resolved_requirements, "Universal resolver did not return a lock"
