@@ -88,7 +88,7 @@ def smoke(science_python: Path, output_root: Path) -> None:
     assert cleaned["rows"] == 36, cleaned
     # Exercise TeAL's released PatternExtractor through the real Desktop
     # runner. Capture data and metadata, with no preview persistence.
-    pattern = r"Document (?P<metadata_document_number>\\d+)\\s+describes\\s+a (?P<data_animal>\\w+)\\. (?P<data_details>.*)"
+    pattern = r"Document (?P<metadata_document_number>\d+)\s+describes\s+a (?P<data_animal>\w+)\. (?P<data_details>.*)"
     pattern_options = {"pattern": pattern, "on_unmatched": "fail"}
     pattern_preview = command(
         "preview_step", artifact_id=cleaned["id"], kind="pattern",
