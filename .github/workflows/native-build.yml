@@ -54,10 +54,8 @@ jobs:
           )
           assert runners, "Missing app runner resource"
           science_wheels = list(root.rglob("science-wheels/*.whl"))
-          expected = {
-              "geometric_coder-0.8.15-py3-none-any.whl",
-              "text_analysis_lab-0.9.0-py3-none-any.whl",
-          }
+          from geco_desktop.science_releases import RELEASES
+          expected = {release.wheel for release in RELEASES}
           # PyInstaller's macOS app bundle exposes Resources, Frameworks and
           # onedir copies/symlinks of the same two wheel distributions.
           assert {wheel.name for wheel in science_wheels} == expected, science_wheels
