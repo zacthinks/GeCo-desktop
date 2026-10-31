@@ -21,6 +21,7 @@ def main() -> int:
         from pathlib import Path
 
         from .environments import EnvironmentManager, installed_runner_path
+        from .science_releases import RELEASES
 
         app = QApplication(sys.argv[:1])
         window = MainWindow()
@@ -33,7 +34,7 @@ def main() -> int:
         wheels = manager.wheelhouse
         if wheels is None or not all(
             any(file.name.startswith(prefix) for file in wheels.glob("*.whl"))
-            for prefix in ("text_analysis_lab-0.9.0-", "geometric_coder-0.8.15-")
+            for prefix in (release.wheel.rsplit("-", 3)[0] + "-" for release in RELEASES)
         ):
             raise RuntimeError("Missing verified bundled scientific packages")
         QTimer.singleShot(300, app.quit)
