@@ -85,6 +85,7 @@ def serve(path: str, workspace: str, port: int, shutdown_file: str | None = None
 
     project = Project.open(path)
     complete = threading.Event()
+    server: Any = None
 
     def watch_shutdown() -> None:
         if not shutdown_file:
@@ -99,12 +100,21 @@ def serve(path: str, workspace: str, port: int, shutdown_file: str | None = None
     watcher.start()
     try:
         linked = project.geco.open(workspace)
-        linked.launch(host="127.0.0.1", port=port, debug=False, use_reloader=False)
+        server = linked.launch(host="127.0.0.1", port=port, debug=False, use_reloader=False)
+        # GeCo 0.9+ returns immediately with a closeable server whose HTTP
+        # thread is daemonized. Keep TeAL open while Desktop owns the listener.
+        # Earlier blocking launcher implementations remain supported.
+        if server is not None and callable(getattr(server, "wait", None)):
+            while not server.wait(timeout=0.25):
+                if shutdown_file and Path(shutdown_file).is_file():
+                    break
         return 0
     except KeyboardInterrupt:
         return 0
     finally:
         complete.set()
+        if server is not None and callable(getattr(server, "close", None)):
+            server.close()
         watcher.join(timeout=1)
         project.close()
 
