@@ -22,6 +22,7 @@ class RuntimeSpec:
     teal: str
     geco: str
     locked_packages: tuple[str, ...] = ()
+    resolved_requirements: str | None = None
 
     def __post_init__(self) -> None:
         for field_name in ("python", "teal", "geco"):
@@ -32,6 +33,11 @@ class RuntimeSpec:
             not isinstance(item, str) or not item.strip() for item in self.locked_packages
         ):
             raise ValueError("locked_packages must contain requirement strings")
+        if self.resolved_requirements is not None and (
+            not isinstance(self.resolved_requirements, str)
+            or not self.resolved_requirements.strip()
+        ):
+            raise ValueError("resolved_requirements must be nonempty lock text")
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> RuntimeSpec:
@@ -42,15 +48,19 @@ class RuntimeSpec:
             teal=data["teal"],
             geco=data["geco"],
             locked_packages=tuple(data.get("locked_packages", [])),
+            resolved_requirements=data.get("resolved_requirements"),
         )
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        result = {
             "python": self.python,
             "teal": self.teal,
             "geco": self.geco,
             "locked_packages": list(self.locked_packages),
         }
+        if self.resolved_requirements is not None:
+            result["resolved_requirements"] = self.resolved_requirements
+        return result
 
 
 @dataclass(frozen=True)
@@ -146,3 +156,30 @@ def write_descriptor(root: str | Path, descriptor: ProjectDescriptor, *, replace
         if os.path.exists(staged):
             os.unlink(staged)
     return target
+
+
+def reconcile_finalization(
+    root: str | Path,
+    descriptor: ProjectDescriptor,
+    workspaces: list[dict[str, Any]],
+) -> ProjectDescriptor:
+    """Repair a stale descriptor only when TeAL already owns the linked workspace.
+
+    TeAL's GeCo manifest is authoritative. This only repairs Desktop's small
+    portable state marker after a crash between linking and the descriptor write.
+    It never creates/replaces a GeCo workspace or mutates scientific artifacts.
+    """
+    if descriptor.state != "preparing":
+        return descriptor
+    if not any(
+        isinstance(workspace, dict)
+        and workspace.get("name") == descriptor.workspace_name
+        for workspace in workspaces
+    ):
+        return descriptor
+    recovered = ProjectDescriptor.from_dict({
+        **descriptor.to_dict(),
+        "state": "finalized",
+    })
+    write_descriptor(root, recovered, replace=True)
+    return recovered

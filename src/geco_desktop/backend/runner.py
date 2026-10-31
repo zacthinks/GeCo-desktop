@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import _thread
 import argparse
+import importlib.util
 import json
 import sys
 import threading
@@ -36,6 +37,18 @@ def dispatch(message: dict[str, Any]) -> dict[str, Any]:
             return {"project_path": str(project.path), "workspaces": workspaces}
         finally:
             project.close()
+    if action in {"capabilities", "model_inventory", "download_model", "resume_operation", "csv_schema", "source_schema", "import_source", "catalog", "import_csv", "preview", "preview_step", "apply_step", "finalize"}:
+        # This sibling resource ships with the current installed Desktop runner,
+        # not as a package added to an immutable TeAL scientific environment.
+        resource = Path(__file__).with_name("workflow.py")
+        if not resource.is_file():
+            raise FileNotFoundError(f"Desktop workflow resource missing: {resource}")
+        module_spec = importlib.util.spec_from_file_location("_geco_desktop_workflow", resource)
+        if module_spec is None or module_spec.loader is None:
+            raise RuntimeError("Unable to load Desktop workflow resource.")
+        workflow = importlib.util.module_from_spec(module_spec)
+        module_spec.loader.exec_module(workflow)
+        return getattr(workflow, action)(**args)
     if action == "create_teal":
         from text_analysis_lab import Project
 
@@ -72,6 +85,11 @@ def serve(path: str, workspace: str, port: int, shutdown_file: str | None = None
 
     project = Project.open(path)
     complete = threading.Event()
+    # Legacy GeCo launch() blocks the runner's main thread, so it needs an
+    # interrupt to stop. GeCo 0.9+ returns a server handle instead: raising a
+    # process-wide KeyboardInterrupt in that case can interrupt unrelated work.
+    server_returned = threading.Event()
+    server: Any = None
 
     def watch_shutdown() -> None:
         if not shutdown_file:
@@ -79,19 +97,30 @@ def serve(path: str, workspace: str, port: int, shutdown_file: str | None = None
         marker = Path(shutdown_file)
         while not complete.wait(0.15):
             if marker.is_file():
-                _thread.interrupt_main()
+                if not server_returned.is_set():
+                    _thread.interrupt_main()
                 return
 
     watcher = threading.Thread(target=watch_shutdown, daemon=True)
     watcher.start()
     try:
         linked = project.geco.open(workspace)
-        linked.launch(host="127.0.0.1", port=port, debug=False, use_reloader=False)
+        server = linked.launch(host="127.0.0.1", port=port, debug=False, use_reloader=False)
+        server_returned.set()
+        # GeCo 0.9+ returns immediately with a closeable server whose HTTP
+        # thread is daemonized. Keep TeAL open while Desktop owns the listener.
+        # Earlier blocking launcher implementations remain supported.
+        if server is not None and callable(getattr(server, "wait", None)):
+            while not server.wait(timeout=0.25):
+                if shutdown_file and Path(shutdown_file).is_file():
+                    break
         return 0
     except KeyboardInterrupt:
         return 0
     finally:
         complete.set()
+        if server is not None and callable(getattr(server, "close", None)):
+            server.close()
         watcher.join(timeout=1)
         project.close()
 

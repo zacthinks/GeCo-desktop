@@ -10,7 +10,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from dataclasses import dataclass
+import uuid
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from filelock import FileLock
@@ -65,10 +66,93 @@ class RuntimeProfile:
         )
 
 
+def runtime_with_features(
+    python: str,
+    teal: str,
+    geco: str,
+    *,
+    pdf: bool = False,
+    embeddings: bool = False,
+    spacy: bool = False,
+) -> RuntimeSpec:
+    """Use TeAL's published optional extras; no parallel package recipes.
+
+    The requirements pin direct project dependencies. They are not a fully
+    resolved transitive lock; the shared environment remains immutable after
+    installation and version changes create separate profiles.
+    """
+    enabled = sorted(
+        name for name, requested in (
+            ("pdf", pdf), ("transformers", embeddings), ("spacy", spacy)
+        ) if requested
+    )
+    extras = f"[{','.join(enabled)}]" if enabled else ""
+    return RuntimeSpec(
+        python,
+        teal,
+        geco,
+        locked_packages=(
+            f"text-analysis-lab{extras}=={teal}",
+            f"geometric-coder=={geco}",
+        ),
+    )
+
+
 class EnvironmentManager:
-    def __init__(self, base: Path | None = None, uv: str | None = None) -> None:
+    def __init__(
+        self, base: Path | None = None, uv: str | None = None,
+        wheelhouse: Path | None = None,
+    ) -> None:
         self.base = Path(base) if base is not None else application_data()
-        self.uv = uv or os.environ.get("GECO_DESKTOP_UV") or shutil.which("uv")
+        bundled_root = Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))
+        bundled_uv = bundled_root / ("uv.exe" if os.name == "nt" else "uv")
+        self.uv = (
+            uv or os.environ.get("GECO_DESKTOP_UV")
+            or (str(bundled_uv) if bundled_uv.is_file() else None)
+            or shutil.which("uv")
+        )
+        # The native app bundles audited, pure-Python GeCo and TeAL wheels.
+        # Unlike a Git URL, these require neither Git nor a package-registry
+        # publication on the researcher's machine. No wheels enter .gecod.
+        bundled_wheels = bundled_root / "science-wheels"
+        self.wheelhouse = (
+            Path(wheelhouse) if wheelhouse is not None
+            else bundled_wheels if getattr(sys, "frozen", False) else None
+        )
+
+    def _wheel_links(self) -> tuple[str, ...]:
+        if self.wheelhouse is None:
+            return ()
+        if not self.wheelhouse.is_dir():
+            raise EnvironmentError(
+                f"The application's bundled scientific packages are missing: {self.wheelhouse}"
+            )
+        return ("--find-links", str(self.wheelhouse))
+
+
+    def resolve(self, spec: RuntimeSpec) -> RuntimeSpec:
+        """Resolve one portable, transitive requirements snapshot with uv.
+
+        A universal resolution includes platform markers, so the same project
+        descriptor can be reconstructed on supported Windows/macOS/Linux hosts.
+        Existing locked descriptors never resolve again on open or repair.
+        """
+        if spec.resolved_requirements is not None:
+            return spec
+        if not self.uv:
+            raise EnvironmentError("uv is needed to resolve scientific dependencies")
+        with tempfile.TemporaryDirectory(prefix="gecod-resolve-") as directory:
+            source = Path(directory) / "requirements.in"
+            output = Path(directory) / "requirements.txt"
+            source.write_text("\n".join(self.profile(spec).packages) + "\n", encoding="utf-8")
+            self._uv(
+                "pip", "compile", "--universal", "--python-version", spec.python,
+                *self._wheel_links(), "--output-file", str(output), str(source),
+            )
+            result = output.read_text(encoding="utf-8")
+        if not result.strip():
+            raise EnvironmentError("Scientific dependency resolver returned an empty lock")
+        return replace(spec, resolved_requirements=result)
 
     def profile(self, spec: RuntimeSpec) -> RuntimeProfile:
         return RuntimeProfile(spec, self.base)
@@ -101,16 +185,126 @@ class EnvironmentManager:
             env_dir.mkdir(parents=True, exist_ok=True)
             staged = Path(tempfile.mkdtemp(prefix="gecod-env-", dir=env_dir))
             try:
-                self._uv("venv", "--python", spec.python, str(staged))
-                self._uv("pip", "install", "--python", str(interpreter_path(staged)), *profile.packages)
-                manifest = {"fingerprint": profile.fingerprint, "spec": spec.to_dict()}
-                (staged / "profile.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
-                # Atomically publish only after the complete environment exists.
+                self._install_staged(spec, profile, staged)
+                # Publish only after the complete environment exists.
                 staged.rename(profile.path)
             finally:
                 if staged.exists():
                     shutil.rmtree(staged)
         return self.locate(spec)
+
+    def _install_staged(
+        self, spec: RuntimeSpec, profile: RuntimeProfile, staged: Path
+    ) -> None:
+        """Populate an unpublished profile using only the selected Python runtime."""
+        self._uv("venv", "--python", spec.python, str(staged))
+        if spec.resolved_requirements is not None:
+            lock_file = staged.parent / f"{staged.name}-requirements.txt"
+            try:
+                lock_file.write_text(spec.resolved_requirements, encoding="utf-8")
+                self._uv(
+                    "pip", "install", "--python", str(interpreter_path(staged)),
+                    *self._wheel_links(), "--requirement", str(lock_file),
+                )
+            finally:
+                lock_file.unlink(missing_ok=True)
+        else:
+            # Legacy descriptors, issued before portable locks, remain readable.
+            self._uv(
+                "pip", "install", "--python", str(interpreter_path(staged)),
+                *self._wheel_links(), *profile.packages,
+            )
+        manifest = {"fingerprint": profile.fingerprint, "spec": spec.to_dict()}
+        (staged / "profile.json").write_text(
+            json.dumps(manifest, indent=2), encoding="utf-8"
+        )
+
+    def repair(self, spec: RuntimeSpec) -> Path:
+        """Explicitly replace a broken profile, preserving the old one on failure.
+
+        Never mutate a valid environment. Build an entire replacement in staging
+        before moving the incomplete profile into a separate recovery directory.
+        This operation is always user-approved by the Desktop UI.
+        """
+        profile = self.profile(spec)
+        self.base.mkdir(parents=True, exist_ok=True)
+        with FileLock(str(self.base / "install.lock")):
+            try:
+                self.locate(spec)
+            except EnvironmentError:
+                pass
+            else:
+                raise EnvironmentError("Scientific environment is already ready; no repair needed")
+            if not profile.path.is_dir() or profile.path.is_symlink():
+                raise EnvironmentError(
+                    "Repair requires an existing ordinary environment directory; "
+                    "install a missing environment instead"
+                )
+            if not self.uv:
+                raise EnvironmentError("uv is needed to repair the scientific environment")
+
+            env_dir = profile.path.parent
+            staged = Path(tempfile.mkdtemp(prefix="gecod-env-", dir=env_dir))
+            backup = (
+                self.base / "environment-repair-backups"
+                / f"{profile.fingerprint}-{uuid.uuid4().hex}"
+            )
+            try:
+                self._install_staged(spec, profile, staged)
+                backup.parent.mkdir(parents=True, exist_ok=True)
+                profile.path.rename(backup)
+                try:
+                    staged.rename(profile.path)
+                    self.locate(spec)
+                except Exception:
+                    # Restore the prior directory when promotion/validation fails.
+                    if profile.path.exists():
+                        shutil.rmtree(profile.path)
+                    backup.rename(profile.path)
+                    raise
+                try:
+                    shutil.rmtree(backup)
+                except OSError:
+                    # An open handle (particularly on Windows) may delay cleanup.
+                    # A leftover recovery backup is outside the active profiles.
+                    pass
+            finally:
+                if staged.exists():
+                    shutil.rmtree(staged)
+        return self.locate(spec)
+
+    def list_profiles(self) -> list[dict[str, object]]:
+        """Inspect shared environments without loading or modifying scientific code."""
+        directory = self.base / "environments"
+        if not directory.is_dir():
+            return []
+        records: list[dict[str, object]] = []
+        for location in sorted(directory.iterdir()):
+            if not location.is_dir():
+                continue
+            manifest_path = location / "profile.json"
+            if not manifest_path.is_file():
+                records.append({"path": str(location), "state": "incomplete"})
+                continue
+            try:
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                spec = RuntimeSpec.from_dict(manifest["spec"])
+                profile = self.profile(spec)
+                valid = profile.path == location and profile.fingerprint == manifest["fingerprint"]
+                state = "ready" if valid and profile.python.is_file() else "incomplete"
+                records.append({
+                    "path": str(location),
+                    "state": state,
+                    "fingerprint": profile.fingerprint,
+                    "python": spec.python,
+                    "interpreter": str(profile.python),
+                    "spec": spec.to_dict(),
+                    "teal": spec.teal,
+                    "geco": spec.geco,
+                })
+            except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+                records.append({"path": str(location), "state": "invalid"})
+        return records
 
     def _uv(self, *args: str) -> None:
         result = subprocess.run(
@@ -120,7 +314,7 @@ class EnvironmentManager:
             raise EnvironmentError(f"uv installation failed: {result.stderr.strip()[-2000:]}")
 
 
-def run_command(python: Path, runner: Path, action: str, **kwargs: object) -> dict:
+def run_command(python: Path, runner: Path, action: str, *, timeout: int = 90, **kwargs: object) -> dict:
     """Invoke an app-owned runner with a scientific environment interpreter."""
     from .protocol import decode, encode, request
 
@@ -129,7 +323,7 @@ def run_command(python: Path, runner: Path, action: str, **kwargs: object) -> di
         input=encode(request(action, **kwargs)),
         capture_output=True,
         text=True,
-        timeout=90,
+        timeout=timeout,
         check=False,
     )
     lines = [line for line in result.stdout.splitlines() if line.strip()]

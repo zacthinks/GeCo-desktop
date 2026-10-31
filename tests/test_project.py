@@ -8,6 +8,7 @@ from geco_desktop.project import (
     ProjectDescriptor,
     RuntimeSpec,
     read_descriptor,
+    reconcile_finalization,
     write_descriptor,
 )
 
@@ -61,3 +62,19 @@ def test_reject_unknown_schema_or_workspace(tmp_path):
     with pytest.raises(ValueError, match="workspace"):
         read_descriptor(tmp_path)
     assert uuid.UUID(descriptor.project_id)
+
+
+def test_reconcile_interrupted_finalization_from_teal_workspace(tmp_path):
+    root = tmp_path / "recovery.gecod"
+    root.mkdir()
+    original = ProjectDescriptor.new("Recover me", RuntimeSpec("3.11", "0.9.0", "0.8.15"))
+    write_descriptor(root, original)
+    assert reconcile_finalization(root, original, []) == original
+    assert read_descriptor(root)[1].state == "preparing"
+    assert reconcile_finalization(root, original, [{"name": "other"}]) == original
+    recovered = reconcile_finalization(root, original, [{"name": "desktop"}])
+    assert recovered.state == "finalized"
+    assert recovered.project_id == original.project_id
+    assert recovered.runtime == original.runtime
+    assert read_descriptor(root)[1] == recovered
+    assert reconcile_finalization(root, recovered, [{"name": "desktop"}]) == recovered

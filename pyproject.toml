@@ -24,7 +24,7 @@ geco-desktop = "geco_desktop.app:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-"geco_desktop.backend" = ["runner.py"]
+"geco_desktop.backend" = ["runner.py", "workflow.py"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -1,0 +1,110 @@
+name: Native application builds
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'packaging/**'
+      - 'src/geco_desktop/environments.py'
+      - '.github/workflows/native-build.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact: geco-desktop-windows
+          - os: macos-latest
+            artifact: geco-desktop-macos
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: astral-sh/setup-uv@v6
+      - name: Install GUI and native builder
+        run: python -m pip install -e ".[gui]" "pyinstaller>=6.10,<7"
+      - name: Build pinned science wheels
+        run: python packaging/build_science_wheels.py --output science-wheels
+      - name: Provision real scientific environment from bundled wheels
+        run: python -u tests/integration/bundled_science_install.py --wheels science-wheels
+      - name: Build standalone GUI
+        run: python packaging/build.py --output dist-native
+      - name: Validate bundled runner resources
+        shell: python
+        run: |
+          from pathlib import Path
+          root = Path("dist-native")
+          runners = list(root.rglob("backend/runner.py"))
+          workflows = list(root.rglob("backend/workflow.py"))
+          import os
+          # Test the documented resource path, not a broad recursive file walk.
+          # Windows GitHub runners can return surprising case-sensitive glob results.
+          windows_uv = root / "GeCo Desktop" / "_internal" / "uv.exe"
+          uv = (
+              windows_uv.is_file() if os.name == "nt"
+              else any(p.is_file() for p in root.rglob("uv"))
+          )
+          assert runners, "Missing app runner resource"
+          science_wheels = list(root.rglob("science-wheels/*.whl"))
+          from geco_desktop.science_releases import RELEASES
+          expected = {release.wheel for release in RELEASES}
+          # PyInstaller's macOS app bundle exposes Resources, Frameworks and
+          # onedir copies/symlinks of the same two wheel distributions.
+          assert {wheel.name for wheel in science_wheels} == expected, science_wheels
+          bundle_wheels = (
+              root / "GeCo Desktop" / "_internal" / "science-wheels"
+              if os.name == "nt"
+              else root / "GeCo Desktop.app" / "Contents" / "Frameworks" / "science-wheels"
+          )
+          assert {wheel.name for wheel in bundle_wheels.glob("*.whl")} == expected, bundle_wheels
+          assert workflows, "Missing workflow resource"
+          assert uv, f"Missing uv binary at expected frozen resource location: {windows_uv}"
+      - name: Smoke-check real frozen application
+        shell: bash
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            ./dist-native/GeCo\ Desktop/GeCo\ Desktop.exe --self-check native-self-check.txt
+          else
+            ./dist-native/GeCo\ Desktop.app/Contents/MacOS/GeCo\ Desktop --self-check native-self-check.txt
+          fi
+          test -f native-self-check.txt
+          cat native-self-check.txt
+      - name: Archive native application
+        run: python packaging/archive.py --source dist-native --destination native-artifacts
+      - name: Install Inno Setup for Windows
+        if: runner.os == 'Windows'
+        run: choco install innosetup --yes --no-progress
+      - name: Build Windows per-user installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "packaging\windows.iss"
+          if (-not (Test-Path "native-installers\GeCoDesktop-Windows-Setup.exe")) { throw "Windows installer missing" }
+      - name: Build macOS DMG
+        if: runner.os == 'macOS'
+        run: python packaging/macos_dmg.py --source dist-native --output native-installers
+      - name: Qualify installed Windows application and file association
+        if: runner.os == 'Windows'
+        run: python -u tests/integration/native_installer_qualification.py --installer native-installers/GeCoDesktop-Windows-Setup.exe
+      - name: Qualify application copied from macOS DMG
+        if: runner.os == 'macOS'
+        run: python -u tests/integration/native_installer_qualification.py --installer native-installers/GeCoDesktop-macOS.dmg
+      - name: Upload native app and test installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            native-artifacts/*
+            native-installers/*
+          if-no-files-found: error
+          retention-days: 7
