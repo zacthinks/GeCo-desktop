@@ -1,59 +1,58 @@
-"""Build audited pure-Python science wheels from known integration-tested source revisions.
-
-These are app-distributed *packages*, not per-project scientific environments.
-Dependencies remain resolved and installed via uv on each user's machine.
-"""
+"""Acquire official scientific-release wheels for native Desktop distribution."""
 from __future__ import annotations
 
 import argparse
+import hashlib
+import shutil
 import subprocess
 import sys
 import tempfile
+import urllib.request
 from pathlib import Path
 
-SOURCES = {
-    "text-analysis-lab": (
-        "https://github.com/zacthinks/text-analysis-lab.git",
-        "8213b726b2a6b766b6764bf9bb11427bf841edc8",
-        "0.9.0",
-    ),
-    "geometric-coder": (
-        "https://github.com/zacthinks/GeCo.git",
-        "4fede56f1943b9c1f74c219ebe1785d266363822",
-        "0.8.15",
-    ),
-}
+from geco_desktop.science_releases import RELEASES
 
 
 def build(output: Path) -> None:
     output.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="gecod-wheel-build-") as directory:
-        for name, (url, revision, version) in SOURCES.items():
-            checkout = Path(directory) / name
-            subprocess.run(
-                ["git", "clone", "--quiet", "--no-checkout", url, str(checkout)],
-                check=True,
-            )
-            subprocess.run(
-                ["git", "-C", str(checkout), "checkout", "--detach", revision],
-                check=True,
-            )
-            subprocess.run(
-                [sys.executable, "-m", "pip", "wheel", "--no-deps",
-                 "--wheel-dir", str(output), str(checkout)],
-                check=True,
-            )
-            expected = f"{name.replace('-', '_')}-{version}-py3-none-any.whl"
-            if not (output / expected).is_file():
-                raise RuntimeError(
-                    f"Expected a portable, pure Python wheel: {expected}. "
-                    "Do not bundle platform-dependent science extensions here."
+    with tempfile.TemporaryDirectory(prefix="gecod-wheel-build-") as folder:
+        for release in RELEASES:
+            destination = output / release.wheel
+            if release.wheel_url is not None:
+                urllib.request.urlretrieve(release.wheel_url, destination)
+                observed = hashlib.sha256(destination.read_bytes()).hexdigest()
+                if observed != release.asset_sha256:
+                    destination.unlink(missing_ok=True)
+                    raise RuntimeError(
+                        f"Official {release.distribution} wheel SHA256 mismatch"
+                    )
+            else:
+                # The official GeCo tag exists, but its wheel asset is not
+                # published yet. Build only the immutable release tag.
+                checkout = Path(folder) / release.distribution
+                subprocess.run(
+                    ["git", "clone", "--quiet", "--no-checkout",
+                     f"https://github.com/{release.repository}.git", str(checkout)],
+                    check=True,
                 )
-    print("Bundled wheels:", *(str(p) for p in sorted(output.glob("*.whl"))))
+                subprocess.run(
+                    ["git", "-C", str(checkout), "checkout", "--detach", release.commit],
+                    check=True,
+                )
+                subprocess.run(
+                    [sys.executable, "-m", "pip", "wheel", "--no-deps",
+                     "--wheel-dir", str(output), str(checkout)],
+                    check=True,
+                )
+            if not destination.is_file():
+                raise RuntimeError(
+                    f"Expected portable wheel from {release.tag}: {destination.name}"
+                )
+    print("Verified scientific wheels:", *(str(p) for p in sorted(output.glob("*.whl"))))
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, required=True)
-    arguments = parser.parse_args()
-    build(arguments.output.resolve())
+    args = parser.parse_args()
+    build(args.output.resolve())
