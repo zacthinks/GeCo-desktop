@@ -9,6 +9,7 @@ from pathlib import Path
 
 from geco_desktop.environments import EnvironmentManager, installed_runner_path, run_command
 from geco_desktop.project import RuntimeSpec
+from geco_desktop.science_releases import DEFAULT_PYTHON, GECO, TEAL
 
 
 def qualify(wheels: Path, uv: str) -> None:
@@ -16,7 +17,7 @@ def qualify(wheels: Path, uv: str) -> None:
         manager = EnvironmentManager(
             base=Path(folder) / "shared", uv=uv, wheelhouse=wheels.resolve()
         )
-        spec = RuntimeSpec("3.11", "0.9.0", "0.8.15")
+        spec = RuntimeSpec(DEFAULT_PYTHON, TEAL.version, GECO.version)
         locked = manager.resolve(spec)
         assert locked.resolved_requirements
         python = manager.ensure(locked)
@@ -33,7 +34,7 @@ def qualify(wheels: Path, uv: str) -> None:
             text=True,
             timeout=60,
         ).splitlines()
-        assert version == ["0.8.15", "0.9.0"], version
+        assert version == [GECO.version, TEAL.version], version
         print("PASS: native default scientific installation, version pins and reuse")
 
 
