@@ -85,6 +85,10 @@ def serve(path: str, workspace: str, port: int, shutdown_file: str | None = None
 
     project = Project.open(path)
     complete = threading.Event()
+    # Legacy GeCo launch() blocks the runner's main thread, so it needs an
+    # interrupt to stop. GeCo 0.9+ returns a server handle instead: raising a
+    # process-wide KeyboardInterrupt in that case can interrupt unrelated work.
+    server_returned = threading.Event()
     server: Any = None
 
     def watch_shutdown() -> None:
@@ -93,7 +97,8 @@ def serve(path: str, workspace: str, port: int, shutdown_file: str | None = None
         marker = Path(shutdown_file)
         while not complete.wait(0.15):
             if marker.is_file():
-                _thread.interrupt_main()
+                if not server_returned.is_set():
+                    _thread.interrupt_main()
                 return
 
     watcher = threading.Thread(target=watch_shutdown, daemon=True)
@@ -101,6 +106,7 @@ def serve(path: str, workspace: str, port: int, shutdown_file: str | None = None
     try:
         linked = project.geco.open(workspace)
         server = linked.launch(host="127.0.0.1", port=port, debug=False, use_reloader=False)
+        server_returned.set()
         # GeCo 0.9+ returns immediately with a closeable server whose HTTP
         # thread is daemonized. Keep TeAL open while Desktop owns the listener.
         # Earlier blocking launcher implementations remain supported.
