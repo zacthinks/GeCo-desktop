@@ -28,11 +28,10 @@ def build(output: Path, *, uv: str | None = None) -> None:
             "The builder needs a uv executable. Install uv before packaging the GUI."
         )
     wheels = Path(__file__).resolve().parents[1] / "science-wheels"
-    expected_wheels = ("text_analysis_lab-0.9.0-", "geometric_coder-0.8.15-")
-    if not wheels.is_dir() or not all(
-        any(item.name.startswith(prefix) for item in wheels.glob("*.whl"))
-        for prefix in expected_wheels
-    ):
+    from geco_desktop.science_releases import RELEASES
+
+    expected_wheels = {release.wheel for release in RELEASES}
+    if not wheels.is_dir() or {wheel.name for wheel in wheels.glob("*.whl")} != expected_wheels:
         raise FileNotFoundError("Build the verified scientific wheelhouse before packaging.")
     entry = Path(__file__).resolve().parents[1] / "packaging" / "entry.py"
     output.mkdir(parents=True, exist_ok=True)
