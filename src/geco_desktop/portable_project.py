@@ -15,6 +15,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from .science_releases import GECO, TEAL
+
 if TYPE_CHECKING:
     from .environments import EnvironmentManager
     from .project import RuntimeSpec
@@ -45,6 +47,25 @@ class LockedProjectFiles:
         (root / LOCK_FILE).write_text(self.lock, encoding="utf-8")
 
 
+def _portable_requirement(package: str) -> str:
+    """Bind published science wheels to verifiable, transferable HTTPS sources.
+
+    uv locks resolved from a local --find-links directory can contain a
+    machine-local relative wheelhouse path. Such a lock is not portable.
+    """
+    match = re.fullmatch(
+        r"(text-analysis-lab|geometric-coder)(\[[a-zA-Z0-9_,.-]+\])?==([0-9][a-zA-Z0-9.+-]*)",
+        package,
+    )
+    if match is None:
+        return package
+    name, extras, version = match.groups()
+    release = TEAL if name == "text-analysis-lab" else GECO
+    if release.version != version or release.wheel_url is None or not release.asset_sha256:
+        raise ValueError(f"No verified public wheel source for {package}; choose a supported profile")
+    return f"{name}{extras or ''} @ {release.wheel_url}#sha256={release.asset_sha256}"
+
+
 def project_metadata(name: str, spec: RuntimeSpec) -> str:
     """A standards-compliant uv project with no package to install locally."""
     normalized = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "research"
@@ -64,7 +85,7 @@ def project_metadata(name: str, spec: RuntimeSpec) -> str:
         'version = "0.0.0"',
         f"requires-python = {json.dumps('>=' + spec.python + ',<' + upper)}",
         "dependencies = [",
-        *(f"    {json.dumps(package)}," for package in packages),
+        *(f"    {json.dumps(_portable_requirement(package))}," for package in packages),
         "]",
         "",
         "[tool.uv]",
@@ -89,12 +110,13 @@ def resolve_project_files(manager: EnvironmentManager, name: str, spec: RuntimeS
         (scratch / PROJECT_FILE).write_text(pyproject, encoding="utf-8")
         manager._uv(
             "lock", "--project", str(scratch), "--python", spec.python,
-            *manager._wheel_links(),
         )
         lock_path = scratch / LOCK_FILE
         if not lock_path.is_file():
             raise RuntimeError("uv did not produce a project lock")
         lock = lock_path.read_text(encoding="utf-8")
+        if str(scratch) in lock or 'source = { registry = "../' in lock:
+            raise RuntimeError("uv produced a lock with machine-local scientific sources")
         exported = scratch / "requirements.txt"
         manager._uv(
             "export", "--project", str(scratch), "--frozen", "--no-dev",
