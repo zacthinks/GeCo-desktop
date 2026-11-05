@@ -140,7 +140,6 @@ def test_remote_failure_uses_only_previously_valid_cache(tmp_path, monkeypatch):
 
 def test_withdrawn_reason_mismatch_invalid_manifest():
     raw, record = sample()
-    entry = CatalogEntry.parse(record)
     payload = json.loads(raw)
     payload["teal"] = "0.10.0"
     adjusted = json.dumps(payload, sort_keys=True).encode()
