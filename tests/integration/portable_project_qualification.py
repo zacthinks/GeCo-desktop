@@ -40,6 +40,8 @@ def qualify(uv: str) -> None:
         ).stdout
         assert "text-analysis-lab" in frozen
         assert "geometric-coder" in frozen
+        assert "https://github.com/" in frozen
+        assert str(scratch) not in frozen
         assert files.lock == (moved / "uv.lock").read_text(encoding="utf-8")
         print("PASS: official source lock, project move and frozen export")
 
