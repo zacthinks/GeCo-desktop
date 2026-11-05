@@ -55,11 +55,11 @@ def test_lock_and_export_use_one_uv_resolution_and_no_project_local_venv(tmp_pat
             elif args[0] == "export":
                 destination = Path(args[args.index("--output-file") + 1])
                 destination.write_text(
-                    "geometric-coder==0.10.0\ntext-analysis-lab==0.11.0\n",
+                    "geometric-coder==0.9.0\ntext-analysis-lab==0.10.0\n",
                     encoding="utf-8",
                 )
 
-    spec = RuntimeSpec("3.11", "0.11.0", "0.10.0")
+    spec = RuntimeSpec("3.11", "0.10.0", "0.9.0")
     result = resolve_project_files(Manager(), "Scientific project", spec)
     assert len(calls) == 2
     assert calls[0][:2] == ("lock", "--project")
@@ -68,7 +68,7 @@ def test_lock_and_export_use_one_uv_resolution_and_no_project_local_venv(tmp_pat
     assert "--frozen" in calls[1]
     assert "--no-emit-project" in calls[1]
     assert result.digest == hashlib.sha256(result.lock.encode()).hexdigest()
-    assert "geometric-coder==0.10.0" in result.requirements
+    assert "geometric-coder==0.9.0" in result.requirements
     root = tmp_path / "study.gecod"
     root.mkdir()
     result.write(root)
@@ -99,4 +99,4 @@ def test_empty_lock_or_dependency_export_is_rejected(tmp_path):
                 Path(args[args.index("--output-file") + 1]).write_text("")
 
     with pytest.raises(RuntimeError, match="empty"):
-        resolve_project_files(Manager(), "Study", RuntimeSpec("3.11", "0.11.0", "0.10.0"))
+        resolve_project_files(Manager(), "Study", RuntimeSpec("3.11", "0.10.0", "0.9.0"))
