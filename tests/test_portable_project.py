@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import tomllib
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
@@ -19,16 +18,20 @@ from geco_desktop.project import RuntimeSpec
 
 def test_project_metadata_is_ordinary_uv_project_with_exact_direct_versions():
     spec = RuntimeSpec(
-        "3.11", "0.11.0", "0.10.0",
+        "3.11", "0.10.0", "0.9.0",
         locked_packages=(
-            "text-analysis-lab[pdf,spacy]==0.11.0",
-            "geometric-coder==0.10.0",
+            "text-analysis-lab[pdf,spacy]==0.10.0",
+            "geometric-coder==0.9.0",
         ),
     )
     data = tomllib.loads(project_metadata("My Interview Study", spec))
     assert data["project"]["name"] == "geco-my-interview-study"
     assert data["project"]["requires-python"] == ">=3.11,<3.12"
-    assert data["project"]["dependencies"] == list(spec.locked_packages)
+    assert len(data["project"]["dependencies"]) == 2
+    for package in data["project"]["dependencies"]:
+        assert package.startswith(("text-analysis-lab", "geometric-coder"))
+        assert "https://github.com/" in package
+        assert "#sha256=" in package
     assert data["tool"]["uv"]["package"] is False
 
 
@@ -42,9 +45,6 @@ def test_lock_and_export_use_one_uv_resolution_and_no_project_local_venv(tmp_pat
 
     class Manager:
         uv = "uv"
-
-        def _wheel_links(self):
-            return ("--find-links", str(tmp_path / "wheelhouse"))
 
         def _uv(self, *args):
             calls.append(args)
@@ -64,6 +64,7 @@ def test_lock_and_export_use_one_uv_resolution_and_no_project_local_venv(tmp_pat
     assert len(calls) == 2
     assert calls[0][:2] == ("lock", "--project")
     assert calls[1][0] == "export"
+    assert "--find-links" not in calls[0]
     assert "--frozen" in calls[1]
     assert "--no-emit-project" in calls[1]
     assert result.digest == hashlib.sha256(result.lock.encode()).hexdigest()
@@ -89,9 +90,6 @@ def test_portable_project_files_never_overwrite_old_research(tmp_path):
 def test_empty_lock_or_dependency_export_is_rejected(tmp_path):
     class Manager:
         uv = "uv"
-
-        def _wheel_links(self):
-            return ()
 
         def _uv(self, *args):
             root = Path(args[args.index("--project") + 1])
