@@ -25,7 +25,7 @@ def test_project_metadata_is_ordinary_uv_project_with_exact_direct_versions():
         ),
     )
     data = tomllib.loads(project_metadata("My Interview Study", spec))
-    assert data["project"]["name"] == "geco-my-interview-study"
+    assert data["project"]["name"] == "geco-research-project"
     assert data["project"]["requires-python"] == ">=3.11,<3.12"
     assert len(data["project"]["dependencies"]) == 2
     for package in data["project"]["dependencies"]:
