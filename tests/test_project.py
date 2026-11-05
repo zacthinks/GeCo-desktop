@@ -1,3 +1,4 @@
+import hashlib
 import json
 import uuid
 from dataclasses import replace
@@ -78,3 +79,33 @@ def test_reconcile_interrupted_finalization_from_teal_workspace(tmp_path):
     assert recovered.runtime == original.runtime
     assert read_descriptor(root)[1] == recovered
     assert reconcile_finalization(root, recovered, [{"name": "desktop"}]) == recovered
+
+
+def test_portable_lock_identity_is_preserved_and_checked_on_open(tmp_path):
+    root = tmp_path / "Research.gecod"
+    root.mkdir()
+    lock = 'version = 1\n'
+    (root / "uv.lock").write_text(lock, encoding="utf-8")
+    digest = hashlib.sha256(lock.encode("utf-8")).hexdigest()
+    descriptor = ProjectDescriptor.new(
+        "Research", RuntimeSpec("3.11", "0.10.0", "0.9.0"),
+        project_lock_sha256=digest,
+    )
+    write_descriptor(root, descriptor)
+    assert read_descriptor(root)[1] == descriptor
+
+    (root / "uv.lock").write_text("version = 2\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="uv.lock has changed"):
+        read_descriptor(root)
+
+    (root / "uv.lock").unlink()
+    with pytest.raises(FileNotFoundError, match="uv.lock is missing"):
+        read_descriptor(root)
+
+
+def test_invalid_portable_lock_digest_is_rejected():
+    with pytest.raises(ValueError, match="uv.lock SHA256"):
+        ProjectDescriptor.new(
+            "Research", RuntimeSpec("3.11", "0.10.0", "0.9.0"),
+            project_lock_sha256="not-a-sha256",
+        )
