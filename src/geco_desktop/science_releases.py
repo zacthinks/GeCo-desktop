@@ -18,8 +18,7 @@ class ScienceRelease:
     tag: str
     commit: str
     wheel: str
-    # A published GitHub Release wheel is preferred. Until GeCo's tagged release
-    # has a public wheel asset, build *the immutable tag* during packaging only.
+    # Official release wheel digest; release assets remain immutable after publishing.
     asset_sha256: str | None = None
 
     @property
@@ -49,6 +48,7 @@ GECO = ScienceRelease(
     tag="v0.9.0",
     commit="2c0b4eeaf49e877a3a7c1829c9deaa7fc8af7d90",
     wheel="geometric_coder-0.9.0-py3-none-any.whl",
+    asset_sha256="4c0a116924e01ff815a3f0a1a48895d36c950510641d4a944680a4c1d2ea34fd",
 )
 
 RELEASES = (TEAL, GECO)
