@@ -13,6 +13,7 @@ import json
 import os
 import re
 import tempfile
+import tomllib
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
@@ -115,6 +116,22 @@ class ProfileManifest:
         for key in ("pyproject", "uv_lock"):
             if not isinstance(data.get(key), str) or not data[key].strip():
                 raise ProfileCatalogError(f"Profile manifest missing {key}")
+        # Reject malformed or semantically mismatched locks, even when a signed
+        # catalog points to bytes whose SHA256 matches its metadata.
+        try:
+            project = tomllib.loads(data["pyproject"])
+            locked = tomllib.loads(data["uv_lock"])
+        except (ValueError, TypeError) as exc:
+            raise ProfileCatalogError("Scientific profile contains invalid uv project TOML") from exc
+        dependencies = project.get("project", {}).get("dependencies", [])
+        packages = locked.get("package", [])
+        if not isinstance(dependencies, list) or not isinstance(packages, list):
+            raise ProfileCatalogError("Scientific profile is missing project dependencies or uv packages")
+        for name, version in (("text-analysis-lab", entry.teal), ("geometric-coder", entry.geco)):
+            if not any(isinstance(dep, str) and dep.startswith((name + "==", name + "[", name + " @ ")) for dep in dependencies):
+                raise ProfileCatalogError(f"Scientific profile is missing direct {name} requirement")
+            if not any(isinstance(p, dict) and p.get("name") == name and p.get("version") == version for p in packages):
+                raise ProfileCatalogError(f"Scientific profile uv.lock has incorrect {name} version")
         # A hash-verified immutable profile is still untrusted until qualified
         # through actual scientific integration and platform checks.
         if "file://" in data["pyproject"] or "file://" in data["uv_lock"]:
