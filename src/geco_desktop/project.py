@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import tempfile
@@ -73,6 +74,7 @@ class ProjectDescriptor:
     created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     created_with: str = "0.1.0.dev0"
     last_artifact_id: str | None = None
+    project_lock_sha256: str | None = None
 
     def __post_init__(self) -> None:
         uuid.UUID(self.project_id)
@@ -82,10 +84,20 @@ class ProjectDescriptor:
             raise ValueError("Invalid project state")
         if self.workspace_name != WORKSPACE_NAME:
             raise ValueError("Unrecognized Desktop-managed workspace name")
+        if self.project_lock_sha256 is not None and (
+            len(self.project_lock_sha256) != 64
+            or any(char not in "0123456789abcdef" for char in self.project_lock_sha256)
+        ):
+            raise ValueError("Invalid project uv.lock SHA256")
 
     @classmethod
-    def new(cls, name: str, runtime: RuntimeSpec) -> ProjectDescriptor:
-        return cls(project_id=str(uuid.uuid4()), name=name, runtime=runtime)
+    def new(
+        cls, name: str, runtime: RuntimeSpec, *, project_lock_sha256: str | None = None
+    ) -> ProjectDescriptor:
+        return cls(
+            project_id=str(uuid.uuid4()), name=name, runtime=runtime,
+            project_lock_sha256=project_lock_sha256,
+        )
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ProjectDescriptor:
@@ -100,10 +112,11 @@ class ProjectDescriptor:
             created_at=data["created_at"],
             created_with=data.get("created_with", "unknown"),
             last_artifact_id=data.get("last_artifact_id"),
+            project_lock_sha256=data.get("project_lock_sha256"),
         )
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        record = {
             "schema_version": SCHEMA_VERSION,
             "project_id": self.project_id,
             "name": self.name,
@@ -114,6 +127,9 @@ class ProjectDescriptor:
             "runtime": self.runtime.to_dict(),
             "last_artifact_id": self.last_artifact_id,
         }
+        if self.project_lock_sha256 is not None:
+            record["project_lock_sha256"] = self.project_lock_sha256
+        return record
 
 
 def project_directory(path: str | Path) -> Path:
@@ -130,6 +146,22 @@ def read_descriptor(path: str | Path) -> tuple[Path, ProjectDescriptor]:
     root = project_directory(path)
     with (root / DESCRIPTOR_NAME).open("r", encoding="utf-8") as stream:
         descriptor = ProjectDescriptor.from_dict(json.load(stream))
+    # Legacy descriptors have no project lock and retain their old opening path.
+    # New descriptors must not silently reuse a profile after the portable lock
+    # was edited, removed or replaced outside Desktop.
+    if descriptor.project_lock_sha256 is not None:
+        lock_file = root / "uv.lock"
+        if not lock_file.is_file():
+            raise FileNotFoundError(
+                "The project's uv.lock is missing; restore it before opening in Desktop."
+            )
+        observed = hashlib.sha256(lock_file.read_bytes()).hexdigest()
+        if observed != descriptor.project_lock_sha256:
+            raise ValueError(
+                "The project's uv.lock has changed. Desktop cannot safely reuse its "
+                "original scientific environment; restore the original lock or use "
+                "uv with this project until custom environment selection is available."
+            )
     return root, descriptor
 
 
