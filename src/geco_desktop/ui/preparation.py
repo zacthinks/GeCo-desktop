@@ -1,7 +1,7 @@
 """Native project creation and TeAL preparation, without scientific imports in Qt.
 
 A small workbench with explicit Apply and Preview: scientific state is always
-owned by TeAL, and the only portable launcher file is project.gecod.
+owned by TeAL, and new projects also carry ordinary pyproject.toml/uv.lock scientific metadata.
 """
 from __future__ import annotations
 
@@ -36,6 +36,7 @@ from geco_desktop.environments import (
     run_command,
     runtime_with_features,
 )
+from geco_desktop.portable_project import resolve_project_files
 from geco_desktop.project import ProjectDescriptor, write_descriptor
 from geco_desktop.science_releases import DEFAULT_PYTHON, GECO, TEAL
 from geco_desktop.sessions import SessionManager
@@ -252,12 +253,16 @@ class PreparationWindow(QDialog):
         )
 
         def work():
-            # Resolve before writing the portable project descriptor, so
-            # copied projects retain the same transitive scientific versions.
-            locked_spec = self.environments.resolve(spec)
+            # Resolve an ordinary, portable uv.lock outside the project folder.
+            # The exported requirements are only an installation bridge for
+            # existing immutable-profile machinery; uv.lock is the durable lock.
+            files = resolve_project_files(self.environments, name, spec)
+            locked_spec = replace(spec, resolved_requirements=files.requirements)
             interpreter = self.environments.ensure(locked_spec)
-            # No replacement of a prior project or existing directory.
+            # Keep the old .gecod launcher readable while introducing uv files.
+            # Never replace an existing project or provision a venv inside it.
             root.mkdir(parents=True, exist_ok=False)
+            files.write(root)
             descriptor = ProjectDescriptor.new(name, locked_spec)
             write_descriptor(root, descriptor)
             run_command(interpreter, installed_runner_path(), "create_teal", timeout=120,
