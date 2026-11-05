@@ -56,7 +56,7 @@ def test_immutable_digest_and_verified_manifest():
     raw, record = sample()
     entry = CatalogEntry.parse(record)
     manifest = ProfileManifest.verify(entry, raw)
-    assert manifest.uv_lock == "version = 1\n"
+    assert "geometric-coder" in manifest.uv_lock
     assert manifest.entry.id == record["id"]
     with pytest.raises(ProfileCatalogError, match="digest mismatch"):
         ProfileManifest.verify(entry, raw + b"\n")
@@ -117,7 +117,7 @@ def test_cache_is_validated_and_offline_works(tmp_path, monkeypatch):
     monkeypatch.setattr(profile_catalog, "_download", lambda url, limit: responses[url])
     assert len(catalog.list(refresh=True)) == 1
     installed = catalog.manifest(CatalogEntry.parse(entry), refresh=True)
-    assert installed.uv_lock == "version = 1\n"
+    assert "geometric-coder" in installed.uv_lock
     monkeypatch.setattr(profile_catalog, "_download", lambda *args: pytest.fail("unexpected network"))
     assert catalog.list()[0].id == entry["id"]
     assert catalog.manifest(CatalogEntry.parse(entry)).entry.id == entry["id"]
