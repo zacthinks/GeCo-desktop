@@ -43,8 +43,10 @@ class LockedProjectFiles:
         for name in (PROJECT_FILE, LOCK_FILE):
             if (root / name).exists():
                 raise FileExistsError(f"Refusing to replace existing project file: {name}")
-        (root / PROJECT_FILE).write_text(self.pyproject, encoding="utf-8")
-        (root / LOCK_FILE).write_text(self.lock, encoding="utf-8")
+        (root / PROJECT_FILE).write_bytes(self.pyproject.encode("utf-8"))
+        # Byte-preserving write: Windows newline conversion would otherwise
+        # change the SHA256 recorded in the portable project descriptor.
+        (root / LOCK_FILE).write_bytes(self.lock.encode("utf-8"))
 
 
 def _portable_requirement(package: str) -> str:
@@ -99,8 +101,9 @@ def resolve_project_files(manager: EnvironmentManager, name: str, spec: RuntimeS
     """Resolve exactly once; never write a temporary venv into the project.
 
     Python resolution runs in an ephemeral external directory, not the research
-    folder. Official wheelhouse entries can be used when packages are absent
-    from PyPI. uv's immutable lock is the source for the exported install list.
+    folder. Published HTTPS wheels with digests keep the resulting lock
+    independent of the local native installer wheelhouse. uv's immutable lock
+    is the source for the exported install list.
     """
     if not manager.uv:
         raise RuntimeError("uv is required to resolve a portable project")
