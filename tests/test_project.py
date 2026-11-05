@@ -85,7 +85,7 @@ def test_portable_lock_identity_is_preserved_and_checked_on_open(tmp_path):
     root = tmp_path / "Research.gecod"
     root.mkdir()
     lock = 'version = 1\n'
-    (root / "uv.lock").write_text(lock, encoding="utf-8")
+    (root / "uv.lock").write_bytes(lock.encode("utf-8"))
     digest = hashlib.sha256(lock.encode("utf-8")).hexdigest()
     descriptor = ProjectDescriptor.new(
         "Research", RuntimeSpec("3.11", "0.10.0", "0.9.0"),
