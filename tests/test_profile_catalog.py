@@ -30,12 +30,12 @@ def sample():
         "geco": "0.10.0",
         "python": "3.11",
         "pyproject": (
-            '[project]\\nname = "geco-research-project"\\n'
-            'dependencies = ["text-analysis-lab==0.11.0", "geometric-coder==0.10.0"]\\n'
+            '[project]\nname = "geco-research-project"\n'
+            'dependencies = ["text-analysis-lab==0.11.0", "geometric-coder==0.10.0"]\n'
         ),
         "uv_lock": (
-            'version = 1\\n[[package]]\\nname = "text-analysis-lab"\\nversion = "0.11.0"\\n'
-            '[[package]]\\nname = "geometric-coder"\\nversion = "0.10.0"\\n'
+            'version = 1\n[[package]]\nname = "text-analysis-lab"\nversion = "0.11.0"\n'
+            '[[package]]\nname = "geometric-coder"\nversion = "0.10.0"\n'
         ),
     }
     raw = json.dumps(payload, sort_keys=True).encode()
