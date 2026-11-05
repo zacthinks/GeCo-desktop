@@ -263,7 +263,9 @@ class PreparationWindow(QDialog):
             # Never replace an existing project or provision a venv inside it.
             root.mkdir(parents=True, exist_ok=False)
             files.write(root)
-            descriptor = ProjectDescriptor.new(name, locked_spec)
+            descriptor = ProjectDescriptor.new(
+                name, locked_spec, project_lock_sha256=files.digest
+            )
             write_descriptor(root, descriptor)
             run_command(interpreter, installed_runner_path(), "create_teal", timeout=120,
                         path=str(root), name=name)
