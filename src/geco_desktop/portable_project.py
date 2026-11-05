@@ -69,8 +69,13 @@ def _portable_requirement(package: str) -> str:
 
 
 def project_metadata(name: str, spec: RuntimeSpec) -> str:
-    """A standards-compliant uv project with no package to install locally."""
-    normalized = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "research"
+    """A non-installed uv project with reusable identity across research folders.
+
+    The human research name lives in TeAL/GeCo metadata and Desktop launcher.
+    A constant non-packaged uv root name makes compatible projects eligible
+    to reuse one immutable validated lock rather than pinning each project
+    name in its dependency graph.
+    """
     packages = spec.locked_packages or (
         f"text-analysis-lab=={spec.teal}",
         f"geometric-coder=={spec.geco}",
@@ -83,7 +88,7 @@ def project_metadata(name: str, spec: RuntimeSpec) -> str:
     upper = f"{version[0]}.{int(version[1]) + 1}"
     lines = [
         "[project]",
-        f"name = {json.dumps('geco-' + normalized)}",
+        'name = "geco-research-project"',
         'version = "0.0.0"',
         f"requires-python = {json.dumps('>=' + spec.python + ',<' + upper)}",
         "dependencies = [",
