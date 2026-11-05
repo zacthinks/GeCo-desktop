@@ -2,12 +2,6 @@ name: Portable uv project qualification
 
 on:
   workflow_dispatch:
-  # One-time branch qualification when this separate integration script changes.
-  # This does not run as part of normal per-commit unit/GUI CI.
-  push:
-    branches: [feature/portable-uv-project-foundation]
-    paths:
-      - tests/integration/portable_project_qualification.py
 
 jobs:
   portable-uv-project:
