@@ -304,6 +304,7 @@ class PreparationWindow(QDialog):
         root: Path | None = None,
         descriptor: ProjectDescriptor | None = None,
         interpreter: Path | None = None,
+        external: bool = False,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -314,6 +315,7 @@ class PreparationWindow(QDialog):
         self.root = root
         self.descriptor = descriptor
         self.interpreter = interpreter
+        self.external = external
         self.pool = QThreadPool.globalInstance()
         self._jobs: list[_Work] = []
         self.artifacts: list[dict] = []
@@ -1045,8 +1047,12 @@ class PreparationWindow(QDialog):
             QMessageBox.warning(self, "Finalize", "Choose observations and their text.")
             return
         def done(result):
-            self.descriptor = replace(self.descriptor, state="finalized", last_artifact_id=args["text_id"])
-            write_descriptor(self.root, self.descriptor, replace=True)
+            self.descriptor = replace(
+                self.descriptor, state="finalized", last_artifact_id=args["text_id"]
+            )
+            # Never create Desktop-owned sidecars in an ordinary Python TeAL project.
+            if not self.external:
+                write_descriptor(self.root, self.descriptor, replace=True)
             self.workspace_created.emit()
             self.accept()
         self._run(lambda: self._command("finalize", timeout=1200, **args),
