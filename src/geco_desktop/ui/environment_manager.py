@@ -18,18 +18,19 @@ class EnvironmentManagerDialog(QDialog):
     def __init__(self, manager: EnvironmentManager, parent=None):
         super().__init__(parent)
         self.manager = manager
-        self.setWindowTitle("Scientific Environments")
+        self.setWindowTitle("Software Profiles")
         self.resize(740, 420)
         layout = QVBoxLayout(self)
         description = QLabel(
-            "Scientific environments are stored outside your projects. "
-            "Each project keeps its chosen versions, and opening it never updates them automatically."
+            "Software profiles provide the tools your project needs. "
+            "This development build shows locally installed runtimes; "
+            "approved profile selection is not available until qualification is complete."
         )
         description.setWordWrap(True)
         layout.addWidget(description)
-        self.table = QTableWidget(0, 5)
+        self.table = QTableWidget(0, 2)
         self.table.setHorizontalHeaderLabels(
-            ["Status", "Python", "TeAL", "GeCo", "Installed location"]
+            ["Status", "Software"]
         )
         layout.addWidget(self.table)
         buttons = QHBoxLayout()
@@ -47,8 +48,7 @@ class EnvironmentManagerDialog(QDialog):
         profiles = self.manager.list_profiles()
         self.table.setRowCount(len(profiles))
         for index, record in enumerate(profiles):
-            for column, key in enumerate(("state", "python", "teal", "geco", "path")):
-                self.table.setItem(
-                    index, column, QTableWidgetItem(str(record.get(key, "—")))
-                )
+            self.table.setItem(index, 0, QTableWidgetItem(str(record.get("state", "unknown"))))
+            software = f"TeAL {record.get('teal', '?')} · GeCo {record.get('geco', '?')}"
+            self.table.setItem(index, 1, QTableWidgetItem(software))
         self.table.resizeColumnsToContents()
