@@ -35,6 +35,9 @@ def build(output: Path, *, uv: str | None = None) -> None:
         raise FileNotFoundError("Build the verified scientific wheelhouse before packaging.")
     entry = Path(__file__).resolve().parents[1] / "packaging" / "entry.py"
     output.mkdir(parents=True, exist_ok=True)
+    from native_icon import prepare_icon
+
+    icon_path = prepare_icon(output / "app-icons")
     command = [
         sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean",
         "--onedir", "--windowed", "--name", "GeCo Desktop",
@@ -44,6 +47,7 @@ def build(output: Path, *, uv: str | None = None) -> None:
         "--add-data", f"{workflow}{os.pathsep}backend",
         "--add-data", f"{wheels}{os.pathsep}science-wheels",
         "--add-binary", f"{uv_path}{os.pathsep}.",
+        *(["--icon", str(icon_path)] if icon_path else []),
         str(entry),
     ]
     subprocess.run(command, check=True)
