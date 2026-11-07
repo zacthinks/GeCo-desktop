@@ -34,7 +34,7 @@ jobs:
           python-version: '3.11'
       - uses: astral-sh/setup-uv@v6
       - name: Install GUI and native builder
-        run: python -m pip install -e ".[gui]" "pyinstaller>=6.10,<7"
+        run: python -m pip install -e ".[gui]" "pyinstaller>=6.10,<7" "Pillow>=11,<13"
       - name: Build pinned science wheels
         run: python packaging/build_science_wheels.py --output science-wheels
       - name: Provision real scientific environment from bundled wheels
