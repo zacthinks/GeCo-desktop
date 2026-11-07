@@ -114,6 +114,30 @@ def project_metadata(name: str, spec: RuntimeSpec) -> str:
     return "\n".join(lines)
 
 
+def project_files_from_profile(
+    manager: EnvironmentManager, manifest: object,
+) -> LockedProjectFiles:
+    """Export a verified immutable profile lock without resolving it again."""
+    if not manager.uv:
+        raise RuntimeError("uv is required to use a software profile")
+    pyproject = manifest.pyproject
+    lock = manifest.uv_lock
+    with tempfile.TemporaryDirectory(prefix="gecod-profile-lock-") as directory:
+        scratch = Path(directory)
+        (scratch / PROJECT_FILE).write_bytes(pyproject.encode("utf-8"))
+        (scratch / LOCK_FILE).write_bytes(lock.encode("utf-8"))
+        exported = scratch / "requirements.txt"
+        manager._uv(
+            "export", "--project", str(scratch), "--frozen", "--no-dev",
+            "--no-emit-project", "--format", "requirements.txt",
+            "--output-file", str(exported),
+        )
+        requirements = exported.read_text(encoding="utf-8") if exported.is_file() else ""
+        if not requirements.strip():
+            raise RuntimeError("Validated profile did not export install requirements")
+        return LockedProjectFiles(pyproject, lock, requirements)
+
+
 def resolve_project_files(manager: EnvironmentManager, name: str, spec: RuntimeSpec) -> LockedProjectFiles:
     """Resolve exactly once; never write a temporary venv into the project.
 
