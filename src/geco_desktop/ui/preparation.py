@@ -38,7 +38,7 @@ from geco_desktop.environments import (
     runtime_with_features,
 )
 from geco_desktop.portable_project import resolve_project_files
-from geco_desktop.project import ProjectDescriptor, write_descriptor
+from geco_desktop.project import ProjectDescriptor, RuntimeSpec, write_descriptor
 from geco_desktop.science_releases import DEFAULT_PYTHON, GECO, TEAL
 from geco_desktop.sessions import SessionManager
 
@@ -166,8 +166,15 @@ class NewProjectDialog(QDialog):
         if root.exists():
             QMessageBox.warning(self, "Project exists", "Choose another name or location.")
             return
-        # This is an explicitly unqualified preview fallback, not a recommended profile.
-        spec = runtime_with_features(DEFAULT_PYTHON, TEAL.version, GECO.version)
+        # Until a fully qualified published profile exists, this is an
+        # explicitly labeled candidate using TeAL's published full extra.
+        spec = RuntimeSpec(
+            DEFAULT_PYTHON, TEAL.version, GECO.version,
+            locked_packages=(
+                f"text-analysis-lab[all]=={TEAL.version}",
+                f"geometric-coder=={GECO.version}",
+            ),
+        )
         self.setEnabled(False)
         self.status.setText("Creating project and preparing its software…")
         def work():
