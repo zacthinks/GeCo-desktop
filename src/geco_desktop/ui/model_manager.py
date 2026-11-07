@@ -167,11 +167,35 @@ class ModelManagerDialog(QDialog):
     def add_model(self):
         source, ok = QInputDialog.getItem(
             self, "Add model", "Where is the model?",
-            ["Supported download", "Existing file", "Existing folder"], 0, False
+            ["Hugging Face", "spaCy / supported models", "Existing file", "Existing folder"], 0, False
         )
         if not ok:
             return
-        if source != "Supported download":
+        if source == "Hugging Face":
+            model_id, accepted = QInputDialog.getText(
+                self, "Hugging Face model", "Repository ID (e.g. organization/model)"
+            )
+            if not accepted or not model_id.strip():
+                return
+            revision, accepted = QInputDialog.getText(
+                self, "Model revision", "Optional revision or commit (leave blank for latest)"
+            )
+            if not accepted:
+                return
+            confirmation = QMessageBox.question(
+                self, "Download model",
+                f"Download {model_id.strip()} into the shared model cache? "
+                "This downloads model files but does not execute untrusted code.",
+            )
+            if confirmation == QMessageBox.StandardButton.Yes:
+                self._run(
+                    "teal_model_install", lambda _: self.refresh(),
+                    model_key=f"huggingface:{model_id.strip()}",
+                    revision=revision.strip() or None,
+                )
+            return
+
+        if source != "spaCy / supported models":
             if source == "Existing folder":
                 path = QFileDialog.getExistingDirectory(self, "Select model folder")
             else:
