@@ -203,6 +203,7 @@ class PreparationWindow(QDialog):
     """Guided stateful interface; restart reopens TeAL artifacts, not a parallel DAG."""
 
     project_created = Signal(str)
+    workspace_created = Signal()
 
     def __init__(
         self,
@@ -215,7 +216,7 @@ class PreparationWindow(QDialog):
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Create a GeCo research project")
+        self.setWindowTitle("Prepare observations for GeCo")
         self.resize(910, 700)
         self.environments = environments
         self.sessions = sessions
@@ -532,9 +533,7 @@ class PreparationWindow(QDialog):
         self.operation = QComboBox()
         for label, value in (
             ("Regex cleaning", "clean"), ("Pattern extraction", "pattern"),
-            ("Split into units", "split"), ("CountVectorizer", "count"),
-            ("TF-IDF", "tfidf"), ("SVD", "svd"), ("UMAP", "umap"),
-            ("SentenceTransformer embeddings", "sentence_embeddings"),
+            ("Split into units", "split"),
             ("spaCy sentence/token segmentation", "spacy"),
         ):
             self.operation.addItem(label, value)
@@ -805,19 +804,22 @@ class PreparationWindow(QDialog):
         self.text_artifact = QComboBox()
         self.text_field = QComboBox()
         self.text_artifact.currentIndexChanged.connect(self._refresh_text_fields)
-        self.geometry = QComboBox()
-        self.projection = QComboBox()
+        self.display_text_artifact = QComboBox()
         self.metadata_names = QLineEdit()
         for label, widget in (
-            ("Source documents", self.documents),
-            ("Prepared texts", self.text_artifact),
+            ("Final observations", self.documents),
+            ("Underlying texts", self.text_artifact),
             ("Text field", self.text_field),
-            ("Text representation", self.geometry),
-            ("Optional 2D map", self.projection),
+            ("Optional display texts", self.display_text_artifact),
             ("Metadata fields, comma separated", self.metadata_names),
         ):
             form.addRow(label, widget)
-        layout.addWidget(QLabel("Review your texts and representation before creating the coding workspace."))
+        explanation = QLabel(
+            "Choose your final units of analysis and their text. "
+            "Geometries and numerical representations are created later in GeCo."
+        )
+        explanation.setWordWrap(True)
+        layout.addWidget(explanation)
         layout.addWidget(_row(
             _button("Refresh review", self.refresh_catalog),
             _button("Create coding workspace", self.finalize_project),
@@ -856,15 +858,18 @@ class PreparationWindow(QDialog):
             self.resume_button.setEnabled(bool(operations))
             self.status.setText(f"{len(self.artifacts)} saved TeAL artifacts. {len(data['workspaces'])} linked GeCo workspace(s).")
             table = [a for a in self.artifacts if a["type"] in {"table", "jsonl"}]
-            matrices = [a for a in self.artifacts if a["type"] in {"dense_matrix", "sparse_matrix"}]
             for combo, entries, empty in (
-                (self.source, self.artifacts, None),
+                (self.source, table, None),
                 (self.documents, table, None),
                 (self.text_artifact, table, None),
-                (self.geometry, matrices, None),
-                (self.projection, [a for a in matrices if a["dimensions"] == 2], "No 2D view"),
+                (self.display_text_artifact, table, "Same as underlying text"),
             ):
                 _fill_combo(combo, [_artifact_choice(a) for a in entries], empty=empty)
+            # Desktop's initial data import is deliberately one-time.
+            imported = any("documents" in (artifact.get("aliases") or []) for artifact in table)
+            self.tabs.setTabEnabled(1, not imported)
+            if imported and self.tabs.currentIndex() == 1:
+                self.tabs.setCurrentIndex(2)
             self._update_fields()
             self._refresh_text_fields()
             if self.import_metadata and not self.metadata_names.text():
@@ -920,17 +925,19 @@ class PreparationWindow(QDialog):
             "documents_id": str(self.documents.currentData() or ""),
             "text_id": str(self.text_artifact.currentData() or ""),
             "text_field": self.text_field.currentText(),
-            "geometry_id": str(self.geometry.currentData() or ""),
-            "view_id": str(self.projection.currentData() or "") or None,
+            "geometry_id": None,
+            "view_id": None,
+            "display_text_id": str(self.display_text_artifact.currentData() or "") or None,
             "metadata_fields": [v.strip() for v in self.metadata_names.text().split(",") if v.strip()],
         }
-        if not all((args["documents_id"], args["text_id"], args["text_field"], args["geometry_id"])):
-            QMessageBox.warning(self, "Finalize", "Choose documents, text, text field and geometry.")
+        if not all((args["documents_id"], args["text_id"], args["text_field"])):
+            QMessageBox.warning(self, "Finalize", "Choose observations and their text.")
             return
         def done(result):
             self.descriptor = replace(self.descriptor, state="finalized", last_artifact_id=args["text_id"])
             write_descriptor(self.root, self.descriptor, replace=True)
-            self._show_finalized()
+            self.workspace_created.emit()
+            self.accept()
         self._run(lambda: self._command("finalize", timeout=1200, **args),
                   done, message="Validating and creating the linked GeCo workspace…")
 
