@@ -173,15 +173,12 @@ class NewProjectDialog(QDialog):
         def work():
             files = resolve_project_files(self.environments, name, spec)
             locked_spec = replace(spec, resolved_requirements=files.requirements)
-            interpreter = self.environments.ensure(locked_spec)
             root.mkdir(parents=True, exist_ok=False)
             files.write(root)
             descriptor = ProjectDescriptor.new(name, locked_spec, project_lock_sha256=files.digest)
             write_descriptor(root, descriptor)
-            run_command(
-                interpreter, installed_runner_path(), "create_teal",
-                timeout=120, path=str(root), name=name,
-            )
+            # Scientific runtime installation and TeAL initialization occur on open,
+            # not while the researcher is simply creating a project.
             return str(root)
         job = _Work(work)
         self._jobs.append(job)
