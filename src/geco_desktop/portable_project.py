@@ -63,8 +63,20 @@ def _portable_requirement(package: str) -> str:
         return package
     name, extras, version = match.groups()
     release = TEAL if name == "text-analysis-lab" else GECO
-    if release.version != version or release.wheel_url is None or not release.asset_sha256:
-        raise ValueError(f"No verified public wheel source for {package}; choose a supported profile")
+    if release.version != version:
+        raise ValueError(f"Unsupported scientific profile requirement: {package}")
+    if release.wheel_url is None:
+        # Temporary test-profile source: immutable Git commit, not a mutable
+        # branch name. This is portable but requires online Git access for
+        # a researcher's own uv sync; the native installer bundles its wheel.
+        if not re.fullmatch(r"[0-9a-f]{40}", release.commit):
+            raise ValueError("Development scientific source must name an immutable commit")
+        return (
+            f"{name}{extras or ''} @ git+https://github.com/"
+            f"{release.repository}.git@{release.commit}"
+        )
+    if not release.asset_sha256:
+        raise ValueError(f"Unverified published scientific source for {package}")
     return f"{name}{extras or ''} @ {release.wheel_url}#sha256={release.asset_sha256}"
 
 
