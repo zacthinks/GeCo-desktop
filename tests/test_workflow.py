@@ -112,7 +112,7 @@ def test_finalize_without_geometry_preserves_separate_display_text(monkeypatch):
     )
     result = workflow.finalize(
         "project", "documents", "prepared", "text", None, None,
-        ["year"], display_text_id="display",
+        ["year"], display_text_id="display", display_text_field="visible",
     )
     assert result == {"workspace": "desktop", "already_exists": False}
     assert len(created) == 1 and closed
@@ -121,6 +121,7 @@ def test_finalize_without_geometry_preserves_separate_display_text(monkeypatch):
     assert kwargs["documents"] == {"artifact": "documents"}
     assert kwargs["text"] == {"artifact": "prepared"}
     assert kwargs["display_text"] == {"artifact": "display"}
+    assert kwargs["display_text_field"] == "visible"
     assert kwargs["metadata_fields"] == ["year"]
     assert "geometry" not in kwargs
     assert "projections" not in kwargs
