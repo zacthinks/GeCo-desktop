@@ -151,7 +151,8 @@ class SessionManager:
             log_dir.mkdir(exist_ok=True)
             flags = 0
             if os.name == "nt":
-                flags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
+                flags = (subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
+                         | subprocess.CREATE_NO_WINDOW)
             command = [
                 str(python), str(runner), "--serve", "--project", str(root),
                 "--workspace", descriptor.workspace_name, "--port", str(port),
