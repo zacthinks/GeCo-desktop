@@ -7,6 +7,7 @@ from pathlib import Path
 from PySide6.QtCore import QObject, QRunnable, QSettings, Qt, QThreadPool, Signal
 from PySide6.QtWidgets import (
     QFileDialog,
+    QDialog,
     QHBoxLayout,
     QLabel,
     QListWidget,
@@ -51,6 +52,81 @@ class _Task(QRunnable):
             self.signals.succeeded.emit(self.callback())
         except Exception as exc:
             self.signals.failed.emit(str(exc))
+
+
+class ProjectDashboard(QDialog):
+    """Small permanent entry point; all scientific inventory comes from TeAL."""
+
+    def __init__(self, owner: "MainWindow", root, descriptor, interpreter):
+        super().__init__(owner)
+        self.owner = owner
+        self.root = root
+        self.descriptor = descriptor
+        self.interpreter = interpreter
+        self.setWindowTitle(f"{descriptor.name} — GeCo Desktop")
+        self.resize(750, 540)
+        layout = QVBoxLayout(self)
+        title = QLabel(descriptor.name)
+        title.setObjectName("title")
+        layout.addWidget(title)
+        self.summary = QLabel("Loading TeAL artifacts…")
+        layout.addWidget(self.summary)
+        self.artifacts = QListWidget()
+        layout.addWidget(self.artifacts)
+        actions = QHBoxLayout()
+        preparation = QPushButton("Import and prepare observations…")
+        preparation.clicked.connect(self.open_preparation)
+        preparation.setEnabled(descriptor.state != "finalized")
+        launch = QPushButton("Open GeCo")
+        launch.setEnabled(descriptor.state == "finalized")
+        launch.clicked.connect(self.open_geco)
+        refresh = QPushButton("Refresh artifacts")
+        refresh.clicked.connect(self.refresh)
+        for button in (preparation, launch, refresh):
+            actions.addWidget(button)
+        layout.addLayout(actions)
+        self.refresh()
+
+    def refresh(self):
+        from geco_desktop.environments import installed_runner_path, run_command
+        self.summary.setText("Loading saved TeAL artifacts…")
+        def work():
+            return run_command(
+                self.interpreter, installed_runner_path(), "catalog",
+                timeout=90, path=str(self.root)
+            )
+        def done(data):
+            self.artifacts.clear()
+            artifacts = data.get("artifacts", [])
+            for artifact in artifacts:
+                name = ", ".join(artifact.get("aliases") or ()) or artifact["id"][:12]
+                self.artifacts.addItem(
+                    f"{name} · {artifact.get('type', 'artifact')} · "
+                    f"{artifact.get('rows', 0):,} rows"
+                )
+            self.summary.setText(
+                f"{len(artifacts)} TeAL artifacts · "
+                f"{len(data.get('workspaces', []))} GeCo workspaces"
+            )
+        self.owner._background(work, done)
+
+    def open_preparation(self):
+        from .preparation import PreparationWindow
+        self.owner._preparation = PreparationWindow(
+            self.owner.environments, self.owner.sessions,
+            root=self.root, descriptor=self.descriptor,
+            interpreter=self.interpreter, parent=self.owner,
+        )
+        self.owner._preparation.show()
+
+    def open_geco(self):
+        def done(session):
+            self.owner.sessions.open_browser(session)
+            self.owner.refresh_sessions()
+        self.owner._background(
+            lambda: self.owner.sessions.start(self.root, self.descriptor, self.interpreter),
+            done,
+        )
 
 
 class MainWindow(QMainWindow):
@@ -185,10 +261,7 @@ class MainWindow(QMainWindow):
                 descriptor = reconcile_finalization(
                     root, descriptor, info["workspaces"],
                 )
-            if descriptor.state == "preparing":
-                return root, descriptor, interpreter, None
-            session = self.sessions.start(root, descriptor, interpreter)
-            return root, descriptor, interpreter, session
+            return root, descriptor, interpreter, None
 
         def completed(data):
             root, descriptor, interpreter, session = data
@@ -199,20 +272,9 @@ class MainWindow(QMainWindow):
                 else:
                     self._offer_runtime_install(root, descriptor)
                 return
-            if session is None:
-                from .preparation import PreparationWindow
-
-                self._preparation = PreparationWindow(
-                    self.environments, self.sessions,
-                    root=root, descriptor=descriptor,
-                    interpreter=interpreter, parent=self,
-                )
-                self._preparation.show()
-                self.status.setText(f"Resumed preparation: {descriptor.name}")
-                return
-            self.status.setText(f"Running: {session.project_name}")
-            self.sessions.open_browser(session)
-            self.refresh_sessions()
+            self._dashboard = ProjectDashboard(self, root, descriptor, interpreter)
+            self._dashboard.show()
+            self.status.setText(f"Opened project: {descriptor.name}")
 
         self._background(work, completed)
 
