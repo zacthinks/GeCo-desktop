@@ -24,8 +24,13 @@ def qualify(wheels: Path, uv: str) -> None:
         assert manager.locate(locked) == python
         assert manager.ensure(locked) == python
         result = run_command(python, installed_runner_path(), "capabilities", timeout=120)
-        for name in ("clean", "count", "tfidf", "svd", "umap"):
+        for name in ("clean", "pattern", "split", "count", "tfidf", "svd", "umap"):
             assert result["operations"][name]["available"], (name, result)
+        models = run_command(
+            python, installed_runner_path(), "teal_model_catalog", timeout=120
+        )
+        providers = {resource["provider"] for resource in models["models"]}
+        assert {"spacy", "huggingface", "allennlp"} <= providers, providers
         version = subprocess.check_output(
             [str(python), "-c",
              "from importlib.metadata import version;"
