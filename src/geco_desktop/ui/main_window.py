@@ -6,8 +6,8 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, QRunnable, QSettings, Qt, QThreadPool, Signal
 from PySide6.QtWidgets import (
-    QFileDialog,
     QDialog,
+    QFileDialog,
     QHBoxLayout,
     QLabel,
     QListWidget,
@@ -57,7 +57,7 @@ class _Task(QRunnable):
 class ProjectDashboard(QDialog):
     """Small permanent entry point; all scientific inventory comes from TeAL."""
 
-    def __init__(self, owner: "MainWindow", root, descriptor, interpreter):
+    def __init__(self, owner: MainWindow, root, descriptor, interpreter):
         super().__init__(owner)
         self.owner = owner
         self.root = root
