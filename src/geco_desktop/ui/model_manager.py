@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
+    QFileDialog,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QMessageBox,
     QPushButton,
@@ -81,7 +85,9 @@ class ModelManagerDialog(QDialog):
         self.add_button.clicked.connect(self.add_model)
         self.verify_button = QPushButton("Verify selection")
         self.verify_button.clicked.connect(self.verify)
-        for button in (self.add_button, self.verify_button, self.refresh_button):
+        self.forget_button = QPushButton("Forget local reference")
+        self.forget_button.clicked.connect(self.forget_local)
+        for button in (self.add_button, self.verify_button, self.forget_button, self.refresh_button):
             actions.addWidget(button)
         layout.addLayout(actions)
         close = QPushButton("Close")
@@ -107,6 +113,7 @@ class ModelManagerDialog(QDialog):
         self.refresh_button.setEnabled(False)
         self.add_button.setEnabled(False)
         self.verify_button.setEnabled(False)
+        self.forget_button.setEnabled(False)
         job = _Work(lambda: run_command(
             python, installed_runner_path(), action, timeout=3600, **arguments
         ))
@@ -117,6 +124,7 @@ class ModelManagerDialog(QDialog):
             self.refresh_button.setEnabled(True)
             self.add_button.setEnabled(True)
             self.verify_button.setEnabled(True)
+            self.forget_button.setEnabled(True)
 
         def success(result):
             release()
@@ -144,7 +152,7 @@ class ModelManagerDialog(QDialog):
             self.table.resizeColumnsToContents()
             self.status.setText(
                 f"{sum(m['present'] for m in self._models)} model resources found "
-                f"across {len(self._models)} supported resources. "
+                f"across {len(self._models)} listed resources. "
                 "Presence does not guarantee compatibility."
             )
 
@@ -157,31 +165,73 @@ class ModelManagerDialog(QDialog):
         return self._models[row]
 
     def add_model(self):
-        # Provider support comes from TeAL. Do not invent a second downloader.
-        choices = [item for item in self._models if not item["present"]]
-        if not choices:
-            QMessageBox.information(
-                self, "Models", "All supported resources in this TeAL profile are present."
+        source, ok = QInputDialog.getItem(
+            self, "Add model", "Where is the model?",
+            ["Supported download", "Existing file", "Existing folder"], 0, False
+        )
+        if not ok:
+            return
+        if source != "Supported download":
+            if source == "Existing folder":
+                path = QFileDialog.getExistingDirectory(self, "Select model folder")
+            else:
+                path, _ = QFileDialog.getOpenFileName(self, "Select model file")
+            if not path:
+                return
+            name, ok = QInputDialog.getText(
+                self, "Name model", "Display name", text=Path(path).stem
+            )
+            if not ok or not name.strip():
+                return
+            self._run(
+                "teal_model_register_local", lambda _: self.refresh(),
+                name=name.strip(), path=path,
             )
             return
-        from PySide6.QtWidgets import QInputDialog
 
+        choices = [
+            item for item in self._models
+            if not item["present"] and item["provider"] != "local"
+        ]
+        if not choices:
+            QMessageBox.information(
+                self, "Models", "No additional downloadable models are offered by this profile."
+            )
+            return
         names = [f"{item['provider']} · {item['name']}" for item in choices]
         choice, ok = QInputDialog.getItem(
-            self, "Add model", "Choose a supported model", names, 0, False
+            self, "Add supported model", "Model", names, 0, False
         )
         if not ok:
             return
         item = choices[names.index(choice)]
         answer = QMessageBox.question(
             self, "Download model",
-            f"Download {item['name']} to the shared model cache? "
-            "The model may be large and require an internet connection.",
+            f"Download {item['name']} into the shared model cache? "
+            "The download may require internet access and substantial disk space.",
         )
         if answer != QMessageBox.StandardButton.Yes:
             return
         self.status.setText(f"Downloading {item['name']}…")
         self._run("teal_model_install", lambda _: self.refresh(), model_key=item["key"])
+
+    def forget_local(self):
+        item = self._selected()
+        if not item or item["provider"] != "local":
+            QMessageBox.information(
+                self, "Models", "Select a locally registered file or folder."
+            )
+            return
+        answer = QMessageBox.question(
+            self, "Forget model",
+            f"Remove {item['name']} from the model list? "
+            "Its original files will not be deleted.",
+        )
+        if answer == QMessageBox.StandardButton.Yes:
+            self._run(
+                "teal_model_unregister_local", lambda _: self.refresh(),
+                name=item["name"],
+            )
 
     def verify(self):
         item = self._selected()
