@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
+import tomllib
+import uuid
 
 from PySide6.QtCore import QObject, QRunnable, QSettings, Qt, QThreadPool, Signal
 from PySide6.QtWidgets import (
     QDialog,
     QFileDialog,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QListWidget,
     QMainWindow,
@@ -22,7 +26,12 @@ from PySide6.QtWidgets import (
 )
 
 from geco_desktop.environments import EnvironmentError, EnvironmentManager
-from geco_desktop.project import read_descriptor, reconcile_finalization
+from geco_desktop.project import (
+    ProjectDescriptor,
+    RuntimeSpec,
+    read_descriptor,
+    reconcile_finalization,
+)
 from geco_desktop.sessions import SessionManager
 
 THEME = """
@@ -59,12 +68,17 @@ class _Task(QRunnable):
 class ProjectDashboard(QDialog):
     """Small permanent entry point; all scientific inventory comes from TeAL."""
 
-    def __init__(self, owner: MainWindow, root, descriptor, interpreter):
+    def __init__(
+        self, owner: MainWindow, root, descriptor, interpreter, *,
+        external: bool = False, workspace_name: str | None = None,
+    ):
         super().__init__(owner)
         self.owner = owner
         self.root = root
         self.descriptor = descriptor
         self.interpreter = interpreter
+        self.external = external
+        self.workspace_name = workspace_name
         self.setWindowTitle(f"{descriptor.name} — GeCo Desktop")
         self.resize(750, 540)
         layout = QVBoxLayout(self)
@@ -81,9 +95,14 @@ class ProjectDashboard(QDialog):
         actions = QHBoxLayout()
         self.preparation_button = QPushButton("Import and prepare observations…")
         self.preparation_button.clicked.connect(self.open_preparation)
-        self.preparation_button.setEnabled(descriptor.state != "finalized")
+        self.preparation_button.setEnabled(
+            not external and descriptor.state != "finalized"
+        )
         self.launch_button = QPushButton("Open GeCo")
-        self.launch_button.setEnabled(descriptor.state == "finalized")
+        self.launch_button.setEnabled(
+            (workspace_name is not None) if external
+            else descriptor.state == "finalized"
+        )
         self.launch_button.clicked.connect(self.open_geco)
         refresh = QPushButton("Refresh artifacts")
         refresh.clicked.connect(self.refresh)
@@ -127,10 +146,11 @@ class ProjectDashboard(QDialog):
                 f"{len(artifacts)} TeAL artifacts · "
                 f"{len(data.get('workspaces', []))} GeCo workspaces"
             )
-            root, current = read_descriptor(self.root)
-            self.descriptor = current
-            self.preparation_button.setEnabled(current.state != "finalized")
-            self.launch_button.setEnabled(current.state == "finalized")
+            if not self.external:
+                _root, current = read_descriptor(self.root)
+                self.descriptor = current
+                self.preparation_button.setEnabled(current.state != "finalized")
+                self.launch_button.setEnabled(current.state == "finalized")
         self.owner._background(work, done)
 
     def open_preparation(self):
@@ -148,7 +168,10 @@ class ProjectDashboard(QDialog):
             self.owner.sessions.open_browser(session)
             self.owner.refresh_sessions()
         self.owner._background(
-            lambda: self.owner.sessions.start(self.root, self.descriptor, self.interpreter),
+            lambda: self.owner.sessions.start(
+                self.root, self.descriptor, self.interpreter,
+                workspace=self.workspace_name,
+            ),
             done,
         )
 
@@ -245,7 +268,10 @@ class MainWindow(QMainWindow):
     def _load_recent_projects(self) -> None:
         self.recent_list.clear()
         for value in self._recent_paths():
-            if not (Path(value) / "project.gecod").is_file():
+            if not (
+                (Path(value) / "project.gecod").is_file()
+                or (Path(value) / ".teal").is_dir()
+            ):
                 continue
             self.recent_list.addItem(value)
             self.recent_list.item(self.recent_list.count() - 1).setData(
@@ -259,6 +285,14 @@ class MainWindow(QMainWindow):
         self._load_recent_projects()
 
     def open_project_path(self, path: str) -> None:
+        requested = Path(path).expanduser().resolve()
+        root_path = requested.parent if requested.name == "project.gecod" else requested
+        if (
+            root_path.is_dir() and not (root_path / "project.gecod").is_file()
+            and (root_path / ".teal").is_dir()
+        ):
+            self._open_external_teal(root_path)
+            return
         self.status.setText("Opening GeCo project…")
 
         def work():
@@ -308,6 +342,82 @@ class MainWindow(QMainWindow):
             self.status.setText(f"Opened project: {descriptor.name}")
 
         self._background(work, completed)
+
+    def _open_external_teal(self, root: Path) -> None:
+        """Inspect a Python-created TeAL project without writing Desktop metadata."""
+        from geco_desktop.environments import installed_runner_path, run_command
+
+        required = {}
+        lock = root / "uv.lock"
+        if lock.is_file():
+            try:
+                for item in tomllib.loads(lock.read_text(encoding="utf-8")).get("package", []):
+                    if item.get("name") in {"text-analysis-lab", "geometric-coder"}:
+                        required[item["name"]] = item["version"]
+            except (OSError, ValueError, KeyError, TypeError):
+                QMessageBox.warning(
+                    self, "Open project", "The project's uv.lock could not be inspected."
+                )
+                return
+        candidates = []
+        for record in self.environments.list_profiles():
+            if record.get("state") != "ready" or not isinstance(record.get("spec"), dict):
+                continue
+            spec = RuntimeSpec.from_dict(record["spec"])
+            if any((
+                required.get("text-analysis-lab") not in {None, spec.teal},
+                required.get("geometric-coder") not in {None, spec.geco},
+            )):
+                continue
+            try:
+                python = self.environments.locate(spec)
+            except EnvironmentError:
+                continue
+            candidates.append((spec, python))
+        if not candidates:
+            QMessageBox.warning(
+                self, "Software profile unavailable",
+                "This TeAL project needs a compatible installed software profile. "
+                "Its files have not been changed.",
+            )
+            return
+        spec, interpreter = candidates[0]
+        self.status.setText("Inspecting TeAL workspaces…")
+
+        def completed(info):
+            names = [str(item["name"]) for item in info["workspaces"]]
+            chosen = None
+            if len(names) == 1:
+                chosen = names[0]
+            elif len(names) > 1:
+                settings_key = "preferred_geco_" + uuid.uuid5(
+                    uuid.NAMESPACE_URL, str(root)
+                ).hex
+                default_name = str(self.settings.value(settings_key, names[0]))
+                initial = names.index(default_name) if default_name in names else 0
+                chosen, accepted = QInputDialog.getItem(
+                    self, "Open GeCo", "Choose a coding workspace", names, initial, False
+                )
+                if not accepted:
+                    return
+                self.settings.setValue(settings_key, chosen)
+            descriptor = replace(
+                ProjectDescriptor.new(root.name, spec), state="finalized"
+            )
+            self._dashboard = ProjectDashboard(
+                self, root, descriptor, interpreter,
+                external=True, workspace_name=chosen,
+            )
+            self._dashboard.show()
+            self._remember_project(root)
+            self.status.setText(f"Opened TeAL project: {root.name}")
+        self._background(
+            lambda: run_command(
+                interpreter, installed_runner_path(), "project_info",
+                timeout=90, path=str(root),
+            ),
+            completed,
+        )
 
     def _offer_runtime_install(self, root, descriptor) -> None:
         """Ask before installing a missing runtime while opening a portable project."""
@@ -393,8 +503,8 @@ class MainWindow(QMainWindow):
         self._new_project.show()
 
     def open_project(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Open GeCo Desktop project", "", "GeCo project (project.gecod)"
+        path = QFileDialog.getExistingDirectory(
+            self, "Open GeCo or TeAL project folder"
         )
         if path:
             self.open_project_path(path)
