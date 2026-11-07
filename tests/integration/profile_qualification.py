@@ -18,7 +18,7 @@ from geco_desktop.environments import EnvironmentManager, installed_runner_path,
 from geco_desktop.portable_project import resolve_project_files
 from geco_desktop.project import ProjectDescriptor, RuntimeSpec, write_descriptor
 from geco_desktop.science_releases import DEFAULT_PYTHON, GECO, TEAL
-from geco_desktop.sessions import SessionManager
+from geco_desktop.sessions import SessionError, SessionManager
 
 
 def qualify() -> None:
@@ -101,7 +101,16 @@ def qualify() -> None:
         )
 
         sessions = SessionManager(base=base / "software")
-        session = sessions.start(root, descriptor, python, wait_seconds=30.0)
+        try:
+            session = sessions.start(root, descriptor, python, wait_seconds=60.0)
+        except SessionError:
+            for log in (base / "software" / "logs").glob("*.log"):
+                print(
+                    f"GeCo browser diagnostic ({log.name}):\\n"
+                    + log.read_text(encoding="utf-8", errors="replace")[-6000:],
+                    flush=True,
+                )
+            raise
         assert session.url.startswith("http://127.0.0.1:")
         try:
             assert sessions.list()
