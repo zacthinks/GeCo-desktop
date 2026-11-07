@@ -249,6 +249,9 @@ class PreparationWindow(QDialog):
             self.project_name.setText(descriptor.name)
             self.destination.setText(str(root.parent))
             self._set_existing()
+            # Project creation is a separate dialog; never revisit its setup tab.
+            self.tabs.setTabVisible(0, False)
+            self.tabs.setCurrentIndex(1)
             if descriptor.state == "finalized":
                 self._show_finalized()
             elif (root / ".teal").is_dir():
