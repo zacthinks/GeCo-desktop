@@ -44,7 +44,7 @@ from geco_desktop.portable_project import (
     project_files_from_profile,
     resolve_project_files,
 )
-from geco_desktop.profile_catalog import ProfileCatalog, ProfileCatalogError
+from geco_desktop.profile_catalog import ProfileCatalog
 from geco_desktop.project import ProjectDescriptor, RuntimeSpec, write_descriptor
 from geco_desktop.science_releases import DEFAULT_PYTHON, GECO, TEAL
 from geco_desktop.sessions import SessionManager
