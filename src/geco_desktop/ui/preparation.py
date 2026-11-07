@@ -111,6 +111,94 @@ def _artifact_choice(artifact: dict) -> dict[str, str]:
     return {"id": str(artifact["id"]), "name": description}
 
 
+class NewProjectDialog(QDialog):
+    """Create a project, then return control to Home: no preparation tabs."""
+
+    project_created = Signal(str)
+
+    def __init__(self, environments: EnvironmentManager, parent: QWidget | None = None):
+        super().__init__(parent)
+        self.environments = environments
+        self._jobs: list[_Work] = []
+        self.setWindowTitle("New GeCo project")
+        self.resize(520, 220)
+        layout = QVBoxLayout(self)
+        form = QFormLayout()
+        self.project_name = QLineEdit("My research")
+        self.destination = QLineEdit(str(Path.home() / "Documents"))
+        form.addRow("Project name", self.project_name)
+        form.addRow("Location", _row(self.destination, _button("Browse…", self.choose_destination)))
+        layout.addLayout(form)
+        self.profile = QGroupBox("Advanced · Software Profile")
+        self.profile.setCheckable(True)
+        self.profile.setChecked(False)
+        profile_layout = QVBoxLayout(self.profile)
+        self.profile_label = QLabel(
+            "Development preview profile (not yet validated in the approved catalog). "
+            "Alternative software profiles will appear after qualification."
+        )
+        self.profile_label.setWordWrap(True)
+        profile_layout.addWidget(self.profile_label)
+        self.profile_label.setVisible(False)
+        self.profile.toggled.connect(self.profile_label.setVisible)
+        layout.addWidget(self.profile)
+        self.status = QLabel("")
+        self.status.setWordWrap(True)
+        layout.addWidget(self.status)
+        buttons = _row(
+            _button("Cancel", self.reject),
+            _button("Create project", self.create_project),
+        )
+        layout.addWidget(buttons)
+
+    def choose_destination(self):
+        path = QFileDialog.getExistingDirectory(self, "Choose parent folder", self.destination.text())
+        if path:
+            self.destination.setText(path)
+
+    def create_project(self):
+        name = self.project_name.text().strip()
+        if not name or any(char in name for char in '\\\\/:*?"<>|'):
+            QMessageBox.warning(self, "Project name", "Enter a valid project name.")
+            return
+        parent = Path(self.destination.text()).expanduser()
+        root = parent / (name if name.endswith(".gecod") else f"{name}.gecod")
+        if root.exists():
+            QMessageBox.warning(self, "Project exists", "Choose another name or location.")
+            return
+        # This is an explicitly unqualified preview fallback, not a recommended profile.
+        spec = runtime_with_features(DEFAULT_PYTHON, TEAL.version, GECO.version)
+        self.setEnabled(False)
+        self.status.setText("Creating project and preparing its software…")
+        def work():
+            files = resolve_project_files(self.environments, name, spec)
+            locked_spec = replace(spec, resolved_requirements=files.requirements)
+            interpreter = self.environments.ensure(locked_spec)
+            root.mkdir(parents=True, exist_ok=False)
+            files.write(root)
+            descriptor = ProjectDescriptor.new(name, locked_spec, project_lock_sha256=files.digest)
+            write_descriptor(root, descriptor)
+            run_command(
+                interpreter, installed_runner_path(), "create_teal",
+                timeout=120, path=str(root), name=name,
+            )
+            return str(root)
+        job = _Work(work)
+        self._jobs.append(job)
+        def finished(project_path):
+            self._jobs.remove(job)
+            self.project_created.emit(project_path)
+            self.accept()
+        def failed(error):
+            self._jobs.remove(job)
+            self.setEnabled(True)
+            self.status.setText("Project creation failed.")
+            QMessageBox.warning(self, "GeCo Desktop", error)
+        job.signals.done.connect(finished)
+        job.signals.failed.connect(failed)
+        QThreadPool.globalInstance().start(job)
+
+
 class PreparationWindow(QDialog):
     """Guided stateful interface; restart reopens TeAL artifacts, not a parallel DAG."""
 
