@@ -32,7 +32,7 @@ def test_project_metadata_is_ordinary_uv_project_with_exact_direct_versions():
     assert all("https://github.com/" in package for package in packages)
     assert any(
         package.startswith("text-analysis-lab") and "git+https://" in package
-        and "@8eb578f40213e821591fcfbc9f56070873b6dc47" in package
+        and "@a6651d59534b3ad982dd32000f993d265d351923" in package
         for package in packages
     )
     assert any(
