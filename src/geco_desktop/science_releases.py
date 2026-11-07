@@ -39,7 +39,7 @@ TEAL = ScienceRelease(
     repository="zacthinks/text-analysis-lab",
     version="0.11.1",
     tag="commit-pinned-desktop-test",
-    commit="a6651d59534b3ad982dd32000f993d265d351923",
+    commit="0d64d4dff063f46862795a29b661c13d68e865a1",
     wheel="text_analysis_lab-0.11.1-py3-none-any.whl",
     asset_sha256=None,  # Temporary development build: verified commit, not a published wheel.
 )
