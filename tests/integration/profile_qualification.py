@@ -77,18 +77,25 @@ def qualify() -> None:
             alias="units",
         )["output"]
         assert units["rows"] == 16
-        counts = command(
-            "apply_step", artifact_id=units["id"], kind="count",
-            field="text", options={"max_features": 100},
-            alias="acceptance_geometry",
-        )["output"]
+        # The first GeCo workspace must open from texts without
+        # computing a representation in Desktop.
         result = command(
             "finalize", documents_id=units["id"], text_id=units["id"],
-            text_field="text", geometry_id=counts["id"],
+            text_field="text", geometry_id=None,
             view_id=None, metadata_fields=["author"],
         )
         assert result["workspace"] == "desktop"
         assert any(row["name"] == "desktop" for row in command("project_info")["workspaces"])
+        local = base / "custom-checkpoint.bin"
+        local.write_bytes(b"researcher-supplied")
+        command(
+            "teal_model_register_local", name="test checkpoint", path=str(local)
+        )
+        resources = command("teal_model_catalog")["models"]
+        assert any(
+            row["key"] == "local:test checkpoint" and row["present"]
+            for row in resources
+        )
 
         sessions = SessionManager(base=base / "software")
         session = sessions.start(root, descriptor, python, wait_seconds=30.0)
