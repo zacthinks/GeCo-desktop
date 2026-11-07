@@ -8,6 +8,10 @@ on:
       - '.github/workflows/profile-qualification.yml'
       - 'src/geco_desktop/science_releases.py'
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
