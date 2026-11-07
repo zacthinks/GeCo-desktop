@@ -332,7 +332,7 @@ class MainWindow(QMainWindow):
         )
 
     def _button_environment_manager(self) -> QPushButton:
-        button = QPushButton("Scientific Environments…")
+        button = QPushButton("Software Profiles…")
         button.clicked.connect(self.open_environment_manager)
         return button
 
