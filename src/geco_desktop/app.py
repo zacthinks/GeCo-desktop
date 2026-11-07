@@ -38,6 +38,8 @@ def main() -> int:
 
         app = QApplication(sys.argv[:1])
         _set_app_icon(app)
+        if app.windowIcon().isNull():
+            raise RuntimeError("Missing GeCo app window icon in native distribution")
         window = MainWindow()
         runner = installed_runner_path()
         if not runner.with_name("workflow.py").is_file():
