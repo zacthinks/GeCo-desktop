@@ -15,19 +15,39 @@ def test_native_wizard_can_construct_and_switch_parameter_sections(tmp_path):
     wizard = PreparationWindow(Stub(), Stub())
     try:
         assert wizard.tabs.count() == 4
-        assert wizard.operation.count() == 9
+        assert wizard.operation.count() == 4
         for index in range(wizard.operation.count()):
             wizard.operation.setCurrentIndex(index)
             assert wizard.operation.currentData() in {
-                "clean", "pattern", "split", "count", "tfidf", "svd", "umap",
-                "sentence_embeddings", "spacy"
+                "clean", "pattern", "split", "spacy"
             }
-        assert wizard.windowTitle() == "Create a GeCo research project"
+        assert wizard.windowTitle() == "Prepare observations for GeCo"
         assert not wizard.advanced_runtime.isChecked()
         assert wizard.create_button.text() == "Create research project"
     finally:
         wizard.close()
 
+
+
+def test_new_project_dialog_only_asks_for_name_location_and_profile():
+    qtwidgets = pytest.importorskip("PySide6.QtWidgets")
+    from geco_desktop.ui.preparation import NewProjectDialog
+
+    app = qtwidgets.QApplication.instance() or qtwidgets.QApplication([])
+    assert app is not None
+
+    window = NewProjectDialog(object())
+    try:
+        assert window.windowTitle() == "New GeCo project"
+        assert window.project_name.text()
+        assert window.destination.text()
+        assert not window.profile.isChecked()
+        assert not hasattr(window, "pdf_feature")
+        assert not hasattr(window, "embeddings_feature")
+        assert not hasattr(window, "spacy_feature")
+        assert not hasattr(window, "tabs")
+    finally:
+        window.close()
 
 def test_model_manager_lists_ready_profiles_without_importing_teal():
     qtwidgets = pytest.importorskip("PySide6.QtWidgets")
@@ -48,9 +68,9 @@ def test_model_manager_lists_ready_profiles_without_importing_teal():
 
     window = ModelManagerDialog(StubManager())
     try:
-        assert window.profile.count() == 1
+        assert window.environment.count() == 1
         assert window.table.columnCount() == 3
-        assert window.download_button.text() == "Download model"
+        assert window.add_button.text() == "Add model…"
     finally:
         window.close()
 
