@@ -286,8 +286,8 @@ def test_capability_results_disable_unavailable_choices_without_removing_them():
             for i in range(wizard.operation.count())
         }
         supported["pattern"] = {"available": False, "reason": "Missing PatternExtractor"}
-        supported["sentence_embeddings"] = {
-            "available": False, "reason": "Model not cached",
+        supported["spacy"] = {
+            "available": False, "reason": "spaCy model not available",
         }
         wizard._set_capabilities({
             "imports": {"pdf": {"available": False, "reason": "Missing pdfplumber"}},
@@ -299,7 +299,7 @@ def test_capability_results_disable_unavailable_choices_without_removing_them():
         }
         assert not lookup["pattern"].isEnabled()
         assert lookup["pattern"].toolTip() == "Missing PatternExtractor"
-        assert not lookup["sentence_embeddings"].isEnabled()
+        assert not lookup["spacy"].isEnabled()
         assert lookup["clean"].isEnabled()
         pdf = next(
             i for i in range(wizard.source_kind.count())
@@ -330,14 +330,14 @@ def test_changing_model_invalidates_capability_and_stale_probe_result():
         response = {"imports": {"pdf": {"available": True}}, "operations": supported}
         original = wizard._model_settings()
         wizard._set_capabilities(response, checked=original)
-        embedding = next(
+        spacy = next(
             i for i in range(wizard.operation.count())
-            if wizard.operation.itemData(i) == "sentence_embeddings"
+            if wizard.operation.itemData(i) == "spacy"
         )
-        assert wizard.operation.model().item(embedding).isEnabled()
-        wizard.inputs["model"].setText("new/model")
+        assert wizard.operation.model().item(spacy).isEnabled()
+        wizard.inputs["spacy_model"].setText("new_spacy_model")
         assert not wizard.operation.model().item(embedding).isEnabled()
-        assert not wizard._capability_allowed(kind="sentence_embeddings", operation=True)
+        assert not wizard._capability_allowed(kind="spacy", operation=True)
         wizard._set_capabilities(response, checked=original)
         assert not wizard.operation.model().item(embedding).isEnabled()
         wizard._set_capabilities(response, checked=wizard._model_settings())
