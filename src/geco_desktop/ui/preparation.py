@@ -5,6 +5,8 @@ owned by TeAL, and new projects also carry ordinary pyproject.toml/uv.lock scien
 """
 from __future__ import annotations
 
+import platform
+import tomllib
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -33,11 +35,16 @@ from PySide6.QtWidgets import (
 
 from geco_desktop.environments import (
     EnvironmentManager,
+    application_data,
     installed_runner_path,
     run_command,
     runtime_with_features,
 )
-from geco_desktop.portable_project import resolve_project_files
+from geco_desktop.portable_project import (
+    project_files_from_profile,
+    resolve_project_files,
+)
+from geco_desktop.profile_catalog import ProfileCatalog, ProfileCatalogError
 from geco_desktop.project import ProjectDescriptor, RuntimeSpec, write_descriptor
 from geco_desktop.science_releases import DEFAULT_PYTHON, GECO, TEAL
 from geco_desktop.sessions import SessionManager
@@ -133,14 +140,26 @@ class NewProjectDialog(QDialog):
         self.profile.setCheckable(True)
         self.profile.setChecked(False)
         profile_layout = QVBoxLayout(self.profile)
-        self.profile_label = QLabel(
-            "Development preview profile (not yet validated in the approved catalog). "
-            "Alternative software profiles will appear after qualification."
-        )
+        self.catalog = ProfileCatalog(application_data() / "profiles")
+        self.profile_choices = QComboBox()
+        self.profile_choices.currentIndexChanged.connect(self._describe_profile)
+        self.profile_label = QLabel()
         self.profile_label.setWordWrap(True)
+        profile_layout.addWidget(self.profile_choices)
         profile_layout.addWidget(self.profile_label)
-        self.profile_label.setVisible(False)
-        self.profile.toggled.connect(self.profile_label.setVisible)
+        self.refresh_profile_button = _button("Check for new profiles", self.refresh_profiles)
+        profile_layout.addWidget(self.refresh_profile_button)
+        self._load_profiles(self.catalog.list())
+        for widget in (self.profile_choices, self.profile_label, self.refresh_profile_button):
+            widget.setVisible(False)
+        self.profile.toggled.connect(
+            lambda shown: [
+                widget.setVisible(shown)
+                for widget in (
+                    self.profile_choices, self.profile_label, self.refresh_profile_button
+                )
+            ]
+        )
         layout.addWidget(self.profile)
         self.status = QLabel("")
         self.status.setWordWrap(True)
@@ -150,6 +169,59 @@ class NewProjectDialog(QDialog):
             _button("Create project", self.create_project),
         )
         layout.addWidget(buttons)
+
+    def _load_profiles(self, entries) -> None:
+        previous = self.profile_choices.currentData()
+        self.profile_choices.clear()
+        approved = [
+            item for item in entries
+            if item.status in {"recommended", "superseded"}
+            and platform.system() in item.platforms
+        ]
+        approved.sort(key=lambda item: item.status != "recommended")
+        for entry in approved:
+            label = "Recommended" if entry.status == "recommended" else "Older validated"
+            self.profile_choices.addItem(f"{label} · TeAL {entry.teal} / GeCo {entry.geco}", entry)
+        self.profile_choices.addItem("Development test profile (unvalidated)", None)
+        if previous is not None:
+            index = self.profile_choices.findData(previous)
+            if index >= 0:
+                self.profile_choices.setCurrentIndex(index)
+        self._describe_profile()
+
+    def _describe_profile(self, *_):
+        entry = self.profile_choices.currentData()
+        if entry is None:
+            self.profile_label.setText(
+                "Testing only: this development combination is not an approved "
+                "scientific software profile."
+            )
+        else:
+            self.profile_label.setText(
+                "Validated, version-locked software. The exact scientific lock "
+                "will be retained with this project."
+            )
+
+    def refresh_profiles(self):
+        self.refresh_profile_button.setEnabled(False)
+        self.status.setText("Checking for approved software profiles…")
+        job = _Work(lambda: self.catalog.list(refresh=True))
+        self._jobs.append(job)
+
+        def done(entries):
+            self._jobs.remove(job)
+            self.refresh_profile_button.setEnabled(True)
+            self._load_profiles(entries)
+            self.status.setText("Software profiles updated.")
+
+        def failed(message):
+            self._jobs.remove(job)
+            self.refresh_profile_button.setEnabled(True)
+            self.status.setText(message)
+
+        job.signals.done.connect(done)
+        job.signals.failed.connect(failed)
+        QThreadPool.globalInstance().start(job)
 
     def choose_destination(self):
         path = QFileDialog.getExistingDirectory(self, "Choose parent folder", self.destination.text())
@@ -166,26 +238,41 @@ class NewProjectDialog(QDialog):
         if root.exists():
             QMessageBox.warning(self, "Project exists", "Choose another name or location.")
             return
-        # Until a fully qualified published profile exists, this is an
-        # explicitly labeled candidate using TeAL's published full extra.
-        spec = RuntimeSpec(
-            DEFAULT_PYTHON, TEAL.version, GECO.version,
-            locked_packages=(
-                f"text-analysis-lab[all]=={TEAL.version}",
-                f"geometric-coder=={GECO.version}",
-            ),
-        )
+        entry = self.profile_choices.currentData()
         self.setEnabled(False)
-        self.status.setText("Creating project and preparing its software…")
+        self.status.setText("Creating portable project files…")
+
         def work():
-            files = resolve_project_files(self.environments, name, spec)
+            if entry is None:
+                # Explicitly unapproved source for native acceptance testing only.
+                spec = RuntimeSpec(
+                    DEFAULT_PYTHON, TEAL.version, GECO.version,
+                    locked_packages=(
+                        f"text-analysis-lab[all]=={TEAL.version}",
+                        f"geometric-coder=={GECO.version}",
+                    ),
+                )
+                files = resolve_project_files(self.environments, name, spec)
+            else:
+                # Consume the immutable, digest-verified catalog manifest as-is:
+                # do not independently re-resolve a chosen approved profile.
+                manifest = self.catalog.manifest(entry, refresh=True)
+                packages = tuple(
+                    tomllib.loads(manifest.pyproject)["project"]["dependencies"]
+                )
+                spec = RuntimeSpec(
+                    entry.python, entry.teal, entry.geco, locked_packages=packages
+                )
+                files = project_files_from_profile(self.environments, manifest)
             locked_spec = replace(spec, resolved_requirements=files.requirements)
             root.mkdir(parents=True, exist_ok=False)
             files.write(root)
-            descriptor = ProjectDescriptor.new(name, locked_spec, project_lock_sha256=files.digest)
+            descriptor = ProjectDescriptor.new(
+                name, locked_spec, project_lock_sha256=files.digest,
+                profile_id=entry.id if entry is not None else None,
+            )
             write_descriptor(root, descriptor)
-            # Scientific runtime installation and TeAL initialization occur on open,
-            # not while the researcher is simply creating a project.
+            # Runtime installation and TeAL initialization happen on first open.
             return str(root)
         job = _Work(work)
         self._jobs.append(job)
