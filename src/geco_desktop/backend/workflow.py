@@ -783,3 +783,19 @@ def teal_model_verify(model_key: str) -> dict[str, Any]:
         "ready": result.ready,
         "detail": result.detail,
     }
+
+
+def teal_model_register_local(name: str, path: str) -> dict[str, Any]:
+    """Register an external file/folder without moving or loading the contents."""
+    from text_analysis_lab.models import ModelManager
+
+    status = ModelManager().register_local(name, path)
+    return {"model": status.descriptor.key, "present": status.present}
+
+
+def teal_model_unregister_local(name: str) -> dict[str, Any]:
+    """Remove a registry reference only, never the source model files."""
+    from text_analysis_lab.models import ModelManager
+
+    ModelManager().unregister_local(name)
+    return {"unregistered": name}
