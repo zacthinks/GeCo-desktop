@@ -730,3 +730,53 @@ def download_model(model: str, revision: str | None = None) -> dict[str, Any]:
         "snapshot_path": str(snapshot),
         "downloaded": True,
     }
+
+
+def teal_model_catalog() -> dict[str, Any]:
+    """Discover supported shared model resources with TeAL's own cache policies."""
+    from text_analysis_lab.models import ModelManager
+
+    manager = ModelManager()
+    resources = []
+    for item in manager.list_models():
+        descriptor = item.descriptor
+        resources.append({
+            "key": descriptor.key,
+            "provider": descriptor.provider,
+            "name": descriptor.model_id,
+            "task": descriptor.task,
+            "present": item.present,
+            "verified": item.verified,
+            "compatible": item.compatible,
+            "ready": item.ready,
+            "locations": [
+                {"source": loc.source, "path": str(loc.path) if loc.path else None,
+                 "revision": loc.revision}
+                for loc in item.locations
+            ],
+        })
+    return {"models": resources}
+
+
+def teal_model_install(model_key: str) -> dict[str, Any]:
+    """Explicit user-requested model acquisition; never alter environments."""
+    from text_analysis_lab.models import ModelManager
+
+    manager = ModelManager()
+    manager.install(model_key, allow_download=True)
+    return {"model": model_key, "installed": True}
+
+
+def teal_model_verify(model_key: str) -> dict[str, Any]:
+    """Provider-specific offline inspection, no network download."""
+    from text_analysis_lab.models import ModelManager
+
+    result = ModelManager().verify(model_key)
+    return {
+        "model": result.descriptor.key,
+        "present": result.present,
+        "verified": result.verified,
+        "compatible": result.compatible,
+        "ready": result.ready,
+        "detail": result.detail,
+    }
