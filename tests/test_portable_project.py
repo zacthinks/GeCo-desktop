@@ -18,9 +18,9 @@ from geco_desktop.project import RuntimeSpec
 
 def test_project_metadata_is_ordinary_uv_project_with_exact_direct_versions():
     spec = RuntimeSpec(
-        "3.11", "0.11.0", "0.10.0",
+        "3.11", "0.11.1", "0.10.0",
         locked_packages=(
-            "text-analysis-lab[pdf,spacy]==0.11.0",
+            "text-analysis-lab[pdf,spacy]==0.11.1",
             "geometric-coder==0.10.0",
         ),
     )
@@ -28,16 +28,23 @@ def test_project_metadata_is_ordinary_uv_project_with_exact_direct_versions():
     assert data["project"]["name"] == "geco-research-project"
     assert data["project"]["requires-python"] == ">=3.11,<3.12"
     assert len(data["project"]["dependencies"]) == 2
-    for package in data["project"]["dependencies"]:
-        assert package.startswith(("text-analysis-lab", "geometric-coder"))
-        assert "https://github.com/" in package
-        assert "#sha256=" in package
+    packages = data["project"]["dependencies"]
+    assert all("https://github.com/" in package for package in packages)
+    assert any(
+        package.startswith("text-analysis-lab") and "git+https://" in package
+        and "@8eb578f40213e821591fcfbc9f56070873b6dc47" in package
+        for package in packages
+    )
+    assert any(
+        package.startswith("geometric-coder") and "#sha256=" in package
+        for package in packages
+    )
     assert data["tool"]["uv"]["package"] is False
 
 
 def test_raises_for_unrecognized_python_minor():
     with pytest.raises(ValueError, match="Python major.minor"):
-        project_metadata("A", RuntimeSpec("python", "0.11.0", "0.10.0"))
+        project_metadata("A", RuntimeSpec("python", "0.11.1", "0.10.0"))
 
 
 def test_lock_and_export_use_one_uv_resolution_and_no_project_local_venv(tmp_path):
@@ -55,11 +62,11 @@ def test_lock_and_export_use_one_uv_resolution_and_no_project_local_venv(tmp_pat
             elif args[0] == "export":
                 destination = Path(args[args.index("--output-file") + 1])
                 destination.write_text(
-                    "geometric-coder==0.10.0\ntext-analysis-lab==0.11.0\n",
+                    "geometric-coder==0.10.0\ntext-analysis-lab==0.11.1\n",
                     encoding="utf-8",
                 )
 
-    spec = RuntimeSpec("3.11", "0.11.0", "0.10.0")
+    spec = RuntimeSpec("3.11", "0.11.1", "0.10.0")
     result = resolve_project_files(Manager(), "Scientific project", spec)
     assert len(calls) == 2
     assert calls[0][:2] == ("lock", "--project")
@@ -99,4 +106,4 @@ def test_empty_lock_or_dependency_export_is_rejected(tmp_path):
                 Path(args[args.index("--output-file") + 1]).write_text("")
 
     with pytest.raises(RuntimeError, match="empty"):
-        resolve_project_files(Manager(), "Study", RuntimeSpec("3.11", "0.11.0", "0.10.0"))
+        resolve_project_files(Manager(), "Study", RuntimeSpec("3.11", "0.11.1", "0.10.0"))
