@@ -809,12 +809,15 @@ class PreparationWindow(QDialog):
         self.text_field = QComboBox()
         self.text_artifact.currentIndexChanged.connect(self._refresh_text_fields)
         self.display_text_artifact = QComboBox()
+        self.display_text_field = QComboBox()
+        self.display_text_artifact.currentIndexChanged.connect(self._refresh_display_fields)
         self.metadata_names = QLineEdit()
         for label, widget in (
             ("Final observations", self.documents),
             ("Underlying texts", self.text_artifact),
             ("Text field", self.text_field),
             ("Optional display texts", self.display_text_artifact),
+            ("Display text field", self.display_text_field),
             ("Metadata fields, comma separated", self.metadata_names),
         ):
             form.addRow(label, widget)
@@ -842,6 +845,18 @@ class PreparationWindow(QDialog):
             idx = self.text_field.findText(previous)
             if idx >= 0:
                 self.text_field.setCurrentIndex(idx)
+
+    def _refresh_display_fields(self) -> None:
+        item = self._artifact(self.display_text_artifact.currentData())
+        previous = self.display_text_field.currentText()
+        self.display_text_field.clear()
+        if item:
+            self.display_text_field.addItems(item.get("data_fields", []))
+        self.display_text_field.setEnabled(item is not None)
+        if previous:
+            index = self.display_text_field.findText(previous)
+            if index >= 0:
+                self.display_text_field.setCurrentIndex(index)
 
     def refresh_catalog(self) -> None:
         if self.root is None or self.interpreter is None:
@@ -876,6 +891,7 @@ class PreparationWindow(QDialog):
                 self.tabs.setCurrentIndex(2)
             self._update_fields()
             self._refresh_text_fields()
+            self._refresh_display_fields()
             if self.import_metadata and not self.metadata_names.text():
                 self.metadata_names.setText(", ".join(self.import_metadata))
 
@@ -932,6 +948,10 @@ class PreparationWindow(QDialog):
             "geometry_id": None,
             "view_id": None,
             "display_text_id": str(self.display_text_artifact.currentData() or "") or None,
+            "display_text_field": (
+                self.display_text_field.currentText()
+                if self.display_text_artifact.currentData() else None
+            ),
             "metadata_fields": [v.strip() for v in self.metadata_names.text().split(",") if v.strip()],
         }
         if not all((args["documents_id"], args["text_id"], args["text_field"])):
