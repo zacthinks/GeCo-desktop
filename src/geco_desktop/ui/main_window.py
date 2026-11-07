@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
-from pathlib import Path
 import tomllib
 import uuid
+from dataclasses import replace
+from pathlib import Path
 
 from PySide6.QtCore import QObject, QRunnable, QSettings, Qt, QThreadPool, Signal
 from PySide6.QtWidgets import (
@@ -402,7 +402,9 @@ class MainWindow(QMainWindow):
                     return
                 self.settings.setValue(settings_key, chosen)
             descriptor = replace(
-                ProjectDescriptor.new(root.name, spec), state="finalized"
+                ProjectDescriptor.new(root.name, spec),
+                project_id=str(uuid.uuid5(uuid.NAMESPACE_URL, str(root))),
+                state="finalized",
             )
             self._dashboard = ProjectDashboard(
                 self, root, descriptor, interpreter,
