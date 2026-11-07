@@ -34,6 +34,9 @@ def prepare_icon(output: Path) -> Path | None:
         if not image.save(str(target), "PNG"):
             raise RuntimeError(f"Could not render app icon: {target}")
 
+    # Include one runtime PNG for the Qt window/taskbar icon as well as
+    # the native executable metadata icon.
+    raster(512, output / "geco-app.png")
     os_name = platform.system()
     if os_name == "Windows":
         png = output / "geco-1024.png"
