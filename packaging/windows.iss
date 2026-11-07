@@ -24,7 +24,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut"; Flags: unchecked
-Name: "fileassoc"; Description: "Associate GeCo project descriptors (.gecod) with GeCo Desktop"; Flags: unchecked
+Name: "fileassoc"; Description: "Open GeCo project documents (.gecod) with GeCo Desktop"
 
 [Files]
 Source: "..\dist-native\GeCo Desktop\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -39,4 +39,5 @@ Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: no
 [Registry]
 Root: HKCU; Subkey: "Software\Classes\.gecod"; ValueType: string; ValueName: ""; ValueData: "GeCoDesktop.Project"; Flags: uninsdeletevalue; Tasks: fileassoc
 Root: HKCU; Subkey: "Software\Classes\GeCoDesktop.Project"; ValueType: string; ValueName: ""; ValueData: "GeCo Desktop project"; Flags: uninsdeletekey; Tasks: fileassoc
+Root: HKCU; Subkey: "Software\Classes\GeCoDesktop.Project\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\{#MyAppExeName},0"; Tasks: fileassoc
 Root: HKCU; Subkey: "Software\Classes\GeCoDesktop.Project\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%1"""; Tasks: fileassoc
