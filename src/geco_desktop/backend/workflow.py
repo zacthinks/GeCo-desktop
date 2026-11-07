@@ -307,7 +307,7 @@ def preview(path: str, artifact_id: str, *, n: int = 12, random: bool = False) -
             "metadata_mode": "full",
         }
         if random:
-            frame = artifact.sample(n=min(n, int(artifact.n_rows or 0)), random_state=42, form="table", **options)
+            frame = artifact.sample(n=min(n, int(artifact.n_rows or 0)), form="table", **options)
         else:
             frame = artifact.preview(n=n, **options)
         # Pandas JSON serialization handles NA, timestamps and numpy scalars.
@@ -317,7 +317,7 @@ def preview(path: str, artifact_id: str, *, n: int = 12, random: bool = False) -
             "artifact": _artifact_details(artifact),
             "columns": [str(col) for col in frame.columns],
             "rows": json.loads(frame.to_json(orient="records")),
-            "sampling": "seeded random sample" if random else "first rows",
+            "sampling": "random sample" if random else "first rows",
         }
 
 
