@@ -292,12 +292,12 @@ class MainWindow(QMainWindow):
         dialog.exec()
 
     def new_project(self) -> None:
-        from .preparation import PreparationWindow
+        from .preparation import NewProjectDialog
 
-        # Keep the window alive when opening it non-modally.
-        self._preparation = PreparationWindow(self.environments, self.sessions, parent=self)
-        self._preparation.project_created.connect(self._remember_project)
-        self._preparation.show()
+        # Project creation ends here. Initial import lives in the opened project.
+        self._new_project = NewProjectDialog(self.environments, parent=self)
+        self._new_project.project_created.connect(self._remember_project)
+        self._new_project.show()
 
     def open_project(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
