@@ -542,6 +542,7 @@ def finalize(
     view_id: str | None,
     metadata_fields: list[str],
     display_text_id: str | None = None,
+    display_text_field: str | None = None,
 ) -> dict[str, Any]:
     """Create the reserved GeCo workspace only after checking existing manifests."""
     from text_analysis_lab import Project
@@ -557,6 +558,8 @@ def finalize(
             kwargs["geometry"] = project.get_artifact(geometry_id)
         if view_id:
             kwargs["projections"] = {"default": project.get_artifact(view_id)}
+        if display_text_field:
+            kwargs["display_text_field"] = display_text_field
         handle = project.geco.create(
             "desktop",
             documents=documents,
