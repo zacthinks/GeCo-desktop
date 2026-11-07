@@ -761,12 +761,13 @@ def teal_model_catalog() -> dict[str, Any]:
     return {"models": resources}
 
 
-def teal_model_install(model_key: str) -> dict[str, Any]:
+def teal_model_install(model_key: str, revision: str | None = None) -> dict[str, Any]:
     """Explicit user-requested model acquisition; never alter environments."""
     from text_analysis_lab.models import ModelManager
 
     manager = ModelManager()
-    manager.install(model_key, allow_download=True)
+    options = {"revision": revision} if revision else {}
+    manager.install(model_key, allow_download=True, **options)
     return {"model": model_key, "installed": True}
 
 
