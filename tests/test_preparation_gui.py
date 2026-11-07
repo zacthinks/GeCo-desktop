@@ -396,3 +396,42 @@ def test_open_python_created_teal_project_selects_workspace_without_descriptor(
         dashboard.close()
     finally:
         window.close()
+
+
+def test_python_created_teal_without_geco_offers_workspace_setup(tmp_path, monkeypatch):
+    qtwidgets = pytest.importorskip("PySide6.QtWidgets")
+    from geco_desktop.ui.main_window import MainWindow
+
+    app = qtwidgets.QApplication.instance() or qtwidgets.QApplication([])
+    assert app is not None
+    root = tmp_path / "teal-without-geco"
+    (root / ".teal").mkdir(parents=True)
+
+    class Manager:
+        def list_profiles(self):
+            return [{"state": "ready", "spec": {
+                "python": "3.11", "teal": "0.11.1", "geco": "0.10.0",
+                "locked_packages": [],
+            }}]
+
+        def locate(self, runtime):
+            return tmp_path / "python"
+
+    def run_science(_python, _runner, action, **_kwargs):
+        assert action in {"project_info", "catalog"}
+        return {"workspaces": [], "artifacts": []}
+
+    monkeypatch.setattr("geco_desktop.environments.run_command", run_science)
+    window = MainWindow()
+    window.environments = Manager()
+    monkeypatch.setattr(window, "_background", lambda work, done: done(work()))
+    try:
+        window.open_project_path(str(root))
+        dashboard = window._dashboard
+        assert dashboard.external
+        assert dashboard.preparation_button.isEnabled()
+        assert not dashboard.launch_button.isEnabled()
+        assert not (root / "project.gecod").exists()
+        dashboard.close()
+    finally:
+        window.close()
