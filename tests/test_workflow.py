@@ -72,6 +72,89 @@ def test_finalize_reuses_persisted_link_without_creating_another(monkeypatch):
     assert closed
 
 
+
+def test_finalize_without_geometry_preserves_separate_display_text(monkeypatch):
+    created = []
+    closed = []
+
+    class Linked:
+        def list(self):
+            return []
+
+        def create(self, *args, **kwargs):
+            created.append((args, kwargs))
+
+            class Handle:
+                def close(self):
+                    closed.append(True)
+
+            return Handle()
+
+    class FakeProject:
+        geco = Linked()
+
+        @classmethod
+        def open(cls, path):
+            return cls()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return None
+
+        def get_artifact(self, identifier):
+            return {"artifact": identifier}
+
+    monkeypatch.setitem(
+        sys.modules, "text_analysis_lab",
+        types.SimpleNamespace(Project=FakeProject),
+    )
+    result = workflow.finalize(
+        "project", "documents", "prepared", "text", None, None,
+        ["year"], display_text_id="display",
+    )
+    assert result == {"workspace": "desktop", "already_exists": False}
+    assert len(created) == 1 and closed
+    args, kwargs = created[0]
+    assert args == ("desktop",)
+    assert kwargs["documents"] == {"artifact": "documents"}
+    assert kwargs["text"] == {"artifact": "prepared"}
+    assert kwargs["display_text"] == {"artifact": "display"}
+    assert kwargs["metadata_fields"] == ["year"]
+    assert "geometry" not in kwargs
+    assert "projections" not in kwargs
+
+
+def test_teal_model_catalog_preserves_provider_and_unknown_readiness(monkeypatch):
+    class Status:
+        descriptor = types.SimpleNamespace(
+            key="local:test", provider="local", model_id="test",
+            task="user-supplied",
+        )
+        present = True
+        verified = None
+        compatible = None
+        ready = None
+        locations = (types.SimpleNamespace(
+            source="registered_local", path="/tmp/test", revision=None
+        ),)
+
+    class Manager:
+        def list_models(self):
+            return [Status()]
+
+    monkeypatch.setitem(
+        sys.modules, "text_analysis_lab.models",
+        types.SimpleNamespace(ModelManager=Manager),
+    )
+    result = workflow.teal_model_catalog()
+    assert result["models"][0]["key"] == "local:test"
+    assert result["models"][0]["present"]
+    assert result["models"][0]["ready"] is None
+    assert result["models"][0]["locations"][0]["source"] == "registered_local"
+
+
 def test_pattern_preview_is_not_committed(monkeypatch):
     calls = []
 
