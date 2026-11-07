@@ -20,6 +20,11 @@ from platformdirs import user_data_path
 from .project import RuntimeSpec
 
 
+def _hidden_console_kwargs() -> dict[str, int]:
+    """Keep Windows scientific workers and uv invisible to GUI researchers."""
+    return {"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}
+
+
 class EnvironmentError(RuntimeError):
     """A compatible scientific runtime is missing or failed to install."""
 
@@ -308,7 +313,8 @@ class EnvironmentManager:
 
     def _uv(self, *args: str) -> None:
         result = subprocess.run(
-            [str(self.uv), *args], capture_output=True, text=True, check=False
+            [str(self.uv), *args], capture_output=True, text=True, check=False,
+            **_hidden_console_kwargs()
         )
         if result.returncode:
             raise EnvironmentError(f"uv installation failed: {result.stderr.strip()[-2000:]}")
@@ -325,6 +331,7 @@ def run_command(python: Path, runner: Path, action: str, *, timeout: int = 90, *
         text=True,
         timeout=timeout,
         check=False,
+        **_hidden_console_kwargs(),
     )
     lines = [line for line in result.stdout.splitlines() if line.strip()]
     if result.returncode or len(lines) != 1:
