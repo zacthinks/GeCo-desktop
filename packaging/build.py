@@ -46,6 +46,7 @@ def build(output: Path, *, uv: str | None = None) -> None:
         "--add-data", f"{runner}{os.pathsep}backend",
         "--add-data", f"{workflow}{os.pathsep}backend",
         "--add-data", f"{wheels}{os.pathsep}science-wheels",
+        "--add-data", f"{output / 'app-icons' / 'geco-app.png'}{os.pathsep}icons",
         "--add-binary", f"{uv_path}{os.pathsep}.",
         *(["--icon", str(icon_path)] if icon_path else []),
         str(entry),
