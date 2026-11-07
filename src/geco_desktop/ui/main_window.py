@@ -15,6 +15,8 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QTabWidget,
+    QTreeWidget,
+    QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -71,18 +73,21 @@ class ProjectDashboard(QDialog):
         layout.addWidget(title)
         self.summary = QLabel("Loading TeAL artifacts…")
         layout.addWidget(self.summary)
-        self.artifacts = QListWidget()
+        self.artifacts = QTreeWidget()
+        self.artifacts.setColumnCount(3)
+        self.artifacts.setHeaderLabels(["Artifact", "Type", "Observations"])
+        self.artifacts.setAlternatingRowColors(True)
         layout.addWidget(self.artifacts)
         actions = QHBoxLayout()
-        preparation = QPushButton("Import and prepare observations…")
-        preparation.clicked.connect(self.open_preparation)
-        preparation.setEnabled(descriptor.state != "finalized")
-        launch = QPushButton("Open GeCo")
-        launch.setEnabled(descriptor.state == "finalized")
-        launch.clicked.connect(self.open_geco)
+        self.preparation_button = QPushButton("Import and prepare observations…")
+        self.preparation_button.clicked.connect(self.open_preparation)
+        self.preparation_button.setEnabled(descriptor.state != "finalized")
+        self.launch_button = QPushButton("Open GeCo")
+        self.launch_button.setEnabled(descriptor.state == "finalized")
+        self.launch_button.clicked.connect(self.open_geco)
         refresh = QPushButton("Refresh artifacts")
         refresh.clicked.connect(self.refresh)
-        for button in (preparation, launch, refresh):
+        for button in (self.preparation_button, self.launch_button, refresh):
             actions.addWidget(button)
         layout.addLayout(actions)
         self.refresh()
@@ -98,16 +103,34 @@ class ProjectDashboard(QDialog):
         def done(data):
             self.artifacts.clear()
             artifacts = data.get("artifacts", [])
+            nodes = {}
             for artifact in artifacts:
-                name = ", ".join(artifact.get("aliases") or ()) or artifact["id"][:12]
-                self.artifacts.addItem(
-                    f"{name} · {artifact.get('type', 'artifact')} · "
-                    f"{artifact.get('rows', 0):,} rows"
-                )
+                identifier = str(artifact["id"])
+                name = ", ".join(artifact.get("aliases") or ()) or identifier[:12]
+                node = QTreeWidgetItem([
+                    name,
+                    str(artifact.get("type", "artifact")).replace("_", " "),
+                    f"{int(artifact.get('rows', 0)):,}",
+                ])
+                node.setToolTip(0, identifier)
+                nodes[identifier] = node
+            for artifact in artifacts:
+                identifier = str(artifact["id"])
+                parent = nodes.get(str(artifact.get("source_artifact_id") or ""))
+                if parent is None or parent is nodes[identifier]:
+                    self.artifacts.addTopLevelItem(nodes[identifier])
+                else:
+                    parent.addChild(nodes[identifier])
+            self.artifacts.expandAll()
+            self.artifacts.resizeColumnToContents(0)
             self.summary.setText(
                 f"{len(artifacts)} TeAL artifacts · "
                 f"{len(data.get('workspaces', []))} GeCo workspaces"
             )
+            root, current = read_descriptor(self.root)
+            self.descriptor = current
+            self.preparation_button.setEnabled(current.state != "finalized")
+            self.launch_button.setEnabled(current.state == "finalized")
         self.owner._background(work, done)
 
     def open_preparation(self):
@@ -117,6 +140,7 @@ class ProjectDashboard(QDialog):
             root=self.root, descriptor=self.descriptor,
             interpreter=self.interpreter, parent=self.owner,
         )
+        self.owner._preparation.finished.connect(lambda _result: self.refresh())
         self.owner._preparation.show()
 
     def open_geco(self):
