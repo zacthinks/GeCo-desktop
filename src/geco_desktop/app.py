@@ -3,6 +3,19 @@
 from __future__ import annotations
 
 import sys
+from pathlib import Path
+
+
+def _set_app_icon(app) -> None:
+    from PySide6.QtGui import QIcon
+
+    if getattr(sys, "frozen", False):
+        root = Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))
+        icon = root / "icons" / "geco-app.png"
+    else:
+        icon = Path(__file__).resolve().parents[2] / "packaging" / "assets" / "geco-mark.svg"
+    if icon.is_file():
+        app.setWindowIcon(QIcon(str(icon)))
 
 
 def main() -> int:
@@ -24,6 +37,7 @@ def main() -> int:
         from .science_releases import RELEASES
 
         app = QApplication(sys.argv[:1])
+        _set_app_icon(app)
         window = MainWindow()
         runner = installed_runner_path()
         if not runner.with_name("workflow.py").is_file():
@@ -44,6 +58,7 @@ def main() -> int:
         return 0
 
     app = QApplication(sys.argv)
+    _set_app_icon(app)
     window = MainWindow()
     window.show()
     # File associations send a project descriptor as the first launch argument.
