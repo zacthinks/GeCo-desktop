@@ -1,4 +1,7 @@
-"""Validated upstream scientific releases used by *new* Desktop projects.
+"""Scientific sources for new Desktop projects.
+
+TeAL 0.11.1 below is a temporary, commit-pinned combined development source,
+not an official release or an approved scientific profile.
 
 Update this single catalog whenever upstream publishes a new official release,
 then rerun scientific integration, portability and native-installer qualification.
@@ -34,11 +37,11 @@ class ScienceRelease:
 TEAL = ScienceRelease(
     distribution="text-analysis-lab",
     repository="zacthinks/text-analysis-lab",
-    version="0.11.0",
-    tag="v0.11.0",
-    commit="8e49b3ce43193ac98c99716697c6709d4c25472f",
-    wheel="text_analysis_lab-0.11.0-py3-none-any.whl",
-    asset_sha256="64864fb374f7c292afd3d1bd95ee901505b573d26137c7c739db1736a62f674b",
+    version="0.11.1",
+    tag="commit-pinned-desktop-test",
+    commit="8eb578f40213e821591fcfbc9f56070873b6dc47",
+    wheel="text_analysis_lab-0.11.1-py3-none-any.whl",
+    asset_sha256=None,  # Temporary development build: verified commit, not a published wheel.
 )
 
 GECO = ScienceRelease(
