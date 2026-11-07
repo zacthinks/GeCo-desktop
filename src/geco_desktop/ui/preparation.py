@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
+    QHeaderView,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -635,7 +636,12 @@ class PreparationWindow(QDialog):
         for i, row in enumerate(rows):
             for j, column in enumerate(columns):
                 table.setItem(i, j, QTableWidgetItem(str(row.get(column, ""))))
-        table.resizeColumnsToContents()
+        table.setWordWrap(True)
+        header = table.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        for column_index in range(table.columnCount()):
+            table.setColumnWidth(column_index, min(400, max(140, table.columnWidth(column_index))))
+        table.resizeRowsToContents()
 
     def _present_rows(self, columns: list[str], rows: list[dict]) -> None:
         self._present_table(self.before_table, columns, rows)
