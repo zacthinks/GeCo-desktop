@@ -7,6 +7,8 @@ TeAL-linked GeCo creation and the supervised browser lifecycle.
 from __future__ import annotations
 
 import csv
+import json
+import platform
 import shutil
 import tempfile
 from dataclasses import replace
@@ -96,6 +98,18 @@ def qualify() -> None:
         finally:
             sessions.stop(session.key)
         assert not sessions.list()
+        manifest = {
+            "format": 1,
+            "python": spec.python,
+            "teal": spec.teal,
+            "geco": spec.geco,
+            "pyproject": files.pyproject,
+            "uv_lock": files.lock,
+        }
+        output = Path.cwd() / f"candidate-profile-{platform.system().lower()}.json"
+        output.write_text(
+            json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
+        )
         print("PASS: full profile, text prep, GeCo link/browser, and close")
 
 
