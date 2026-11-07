@@ -93,10 +93,12 @@ class ProjectDashboard(QDialog):
         self.artifacts.setAlternatingRowColors(True)
         layout.addWidget(self.artifacts)
         actions = QHBoxLayout()
-        self.preparation_button = QPushButton("Import and prepare observations…")
+        self.preparation_button = QPushButton(
+            "Set up GeCo…" if external else "Import and prepare observations…"
+        )
         self.preparation_button.clicked.connect(self.open_preparation)
         self.preparation_button.setEnabled(
-            not external and descriptor.state != "finalized"
+            workspace_name is None if external else descriptor.state != "finalized"
         )
         self.launch_button = QPushButton("Open GeCo")
         self.launch_button.setEnabled(
@@ -146,7 +148,16 @@ class ProjectDashboard(QDialog):
                 f"{len(artifacts)} TeAL artifacts · "
                 f"{len(data.get('workspaces', []))} GeCo workspaces"
             )
-            if not self.external:
+            if self.external:
+                names = [str(item["name"]) for item in data.get("workspaces", [])]
+                if self.workspace_name is None and len(names) == 1:
+                    self.workspace_name = names[0]
+                self.preparation_button.setEnabled(not names)
+                self.launch_button.setEnabled(
+                    self.workspace_name is not None
+                    and self.workspace_name in names
+                )
+            else:
                 _root, current = read_descriptor(self.root)
                 self.descriptor = current
                 self.preparation_button.setEnabled(current.state != "finalized")
@@ -157,8 +168,13 @@ class ProjectDashboard(QDialog):
         from .preparation import PreparationWindow
         self.owner._preparation = PreparationWindow(
             self.owner.environments, self.owner.sessions,
-            root=self.root, descriptor=self.descriptor,
-            interpreter=self.interpreter, parent=self.owner,
+            root=self.root,
+            descriptor=(
+                replace(self.descriptor, state="preparing")
+                if self.external else self.descriptor
+            ),
+            interpreter=self.interpreter, external=self.external,
+            parent=self.owner,
         )
         self.owner._preparation.finished.connect(lambda _result: self.refresh())
         self.owner._preparation.show()
