@@ -75,6 +75,7 @@ class ProjectDescriptor:
     created_with: str = "0.1.0.dev0"
     last_artifact_id: str | None = None
     project_lock_sha256: str | None = None
+    profile_id: str | None = None
 
     def __post_init__(self) -> None:
         uuid.UUID(self.project_id)
@@ -89,14 +90,23 @@ class ProjectDescriptor:
             or any(char not in "0123456789abcdef" for char in self.project_lock_sha256)
         ):
             raise ValueError("Invalid project uv.lock SHA256")
+        if self.profile_id is not None and (
+            not self.profile_id.startswith("sha256:")
+            or len(self.profile_id) != 71
+            or any(char not in "0123456789abcdef" for char in self.profile_id[7:])
+        ):
+            raise ValueError("Invalid software profile identity")
 
     @classmethod
     def new(
-        cls, name: str, runtime: RuntimeSpec, *, project_lock_sha256: str | None = None
+        cls, name: str, runtime: RuntimeSpec, *,
+        project_lock_sha256: str | None = None,
+        profile_id: str | None = None,
     ) -> ProjectDescriptor:
         return cls(
             project_id=str(uuid.uuid4()), name=name, runtime=runtime,
             project_lock_sha256=project_lock_sha256,
+            profile_id=profile_id,
         )
 
     @classmethod
@@ -113,6 +123,7 @@ class ProjectDescriptor:
             created_with=data.get("created_with", "unknown"),
             last_artifact_id=data.get("last_artifact_id"),
             project_lock_sha256=data.get("project_lock_sha256"),
+            profile_id=data.get("profile_id"),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -129,6 +140,8 @@ class ProjectDescriptor:
         }
         if self.project_lock_sha256 is not None:
             record["project_lock_sha256"] = self.project_lock_sha256
+        if self.profile_id is not None:
+            record["profile_id"] = self.profile_id
         return record
 
 
