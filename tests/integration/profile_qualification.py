@@ -88,10 +88,13 @@ def qualify() -> None:
         assert any(row["name"] == "desktop" for row in command("project_info")["workspaces"])
         local = base / "custom-checkpoint.bin"
         local.write_bytes(b"researcher-supplied")
-        command(
-            "teal_model_register_local", name="test checkpoint", path=str(local)
+        run_command(
+            python, runner, "teal_model_register_local",
+            timeout=1200, name="test checkpoint", path=str(local),
         )
-        resources = command("teal_model_catalog")["models"]
+        resources = run_command(
+            python, runner, "teal_model_catalog", timeout=1200,
+        )["models"]
         assert any(
             row["key"] == "local:test checkpoint" and row["present"]
             for row in resources
