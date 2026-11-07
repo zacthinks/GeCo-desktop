@@ -273,6 +273,13 @@ class MainWindow(QMainWindow):
                 if profile_path.exists():
                     return root, descriptor, None, "repair"
                 return root, descriptor, None, "install"
+            if descriptor.state == "preparing" and not (root / ".teal").exists():
+                from geco_desktop.environments import installed_runner_path, run_command
+
+                run_command(
+                    interpreter, installed_runner_path(), "create_teal",
+                    timeout=120, path=str(root), name=descriptor.name,
+                )
             if descriptor.state == "preparing" and (root / ".teal").is_dir():
                 # A crash can occur after TeAL creates the linked workspace but
                 # before Desktop commits its portable finalized-state marker.
