@@ -344,3 +344,55 @@ def test_changing_model_invalidates_capability_and_stale_probe_result():
         assert wizard.operation.model().item(spacy).isEnabled()
     finally:
         wizard.close()
+
+
+def test_open_python_created_teal_project_selects_workspace_without_descriptor(
+    tmp_path, monkeypatch,
+):
+    qtwidgets = pytest.importorskip("PySide6.QtWidgets")
+    from geco_desktop.ui.main_window import MainWindow
+
+    app = qtwidgets.QApplication.instance() or qtwidgets.QApplication([])
+    assert app is not None
+    root = tmp_path / "ordinary-teal"
+    (root / ".teal").mkdir(parents=True)
+
+    class Manager:
+        def list_profiles(self):
+            return [{"state": "ready", "spec": {
+                "python": "3.11", "teal": "0.11.0", "geco": "0.10.0",
+                "locked_packages": [],
+            }}]
+
+        def locate(self, runtime):
+            return tmp_path / "python"
+
+    def run_science(_python, _runner, action, **_kwargs):
+        if action == "project_info":
+            return {"workspaces": [{"name": "first"}, {"name": "second"}]}
+        if action == "catalog":
+            return {"artifacts": [], "workspaces": [
+                {"name": "first"}, {"name": "second"}
+            ]}
+        raise AssertionError(action)
+
+    monkeypatch.setattr("geco_desktop.environments.run_command", run_science)
+    monkeypatch.setattr(
+        qtwidgets.QInputDialog, "getItem",
+        lambda *args, **kwargs: ("second", True),
+    )
+    window = MainWindow()
+    window.environments = Manager()
+    monkeypatch.setattr(window, "_background", lambda work, done: done(work()))
+    try:
+        window.open_project_path(str(root))
+        dashboard = window._dashboard
+        assert dashboard.external
+        assert dashboard.workspace_name == "second"
+        assert dashboard.launch_button.isEnabled()
+        assert not dashboard.preparation_button.isEnabled()
+        assert not (root / "project.gecod").exists()
+        assert root in [root.__class__(name) for name in window._recent_paths()]
+        dashboard.close()
+    finally:
+        window.close()
