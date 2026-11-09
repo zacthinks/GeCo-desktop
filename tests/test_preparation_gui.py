@@ -382,6 +382,74 @@ def test_changing_model_invalidates_capability_and_stale_probe_result():
         wizard.close()
 
 
+def test_first_open_resolves_new_project_lock_once_and_preserves_it(
+    tmp_path, monkeypatch,
+):
+    qtwidgets = pytest.importorskip("PySide6.QtWidgets")
+    from geco_desktop.environments import EnvironmentError
+    from geco_desktop.portable_project import LockedProjectFiles
+    from geco_desktop.project import (
+        ProjectDescriptor, RuntimeSpec, read_descriptor, write_descriptor,
+    )
+    from geco_desktop.ui.main_window import MainWindow
+    import geco_desktop.environments as env_module
+    import geco_desktop.portable_project as portable
+
+    app = qtwidgets.QApplication.instance() or qtwidgets.QApplication([])
+    assert app is not None
+    root = tmp_path / "Fresh.gecod"
+    root.mkdir()
+    spec = RuntimeSpec(
+        "3.11", "0.11.1", "0.10.0",
+        locked_packages=(
+            "text-analysis-lab[all]==0.11.1",
+            "geometric-coder==0.10.0",
+        ),
+    )
+    write_descriptor(root, ProjectDescriptor.new("Fresh", spec))
+    calls = []
+
+    def lock(_manager, _name, _spec):
+        calls.append("lock")
+        return LockedProjectFiles(
+            "[project]\\nname = 'study'\\n",
+            "version = 1\\n",
+            "science-dependency==1\\n",
+        )
+
+    class StubEnvironment:
+        def locate(self, runtime):
+            assert runtime.resolved_requirements is not None
+            return tmp_path / "python"
+
+    def science(_python, _runner, action, **_kwargs):
+        if action == "create_teal":
+            (root / ".teal").mkdir()
+            return {}
+        if action in {"catalog", "project_info"}:
+            return {"artifacts": [], "workspaces": []}
+        raise AssertionError(action)
+
+    monkeypatch.setattr(portable, "resolve_project_files", lock)
+    monkeypatch.setattr(env_module, "run_command", science)
+    window = MainWindow()
+    window.environments = StubEnvironment()
+    monkeypatch.setattr(window, "_background", lambda work, done: done(work()))
+    try:
+        window.open_project_path(str(root))
+        descriptor = read_descriptor(root)[1]
+        assert descriptor.project_lock_sha256 is not None
+        assert descriptor.runtime.resolved_requirements == "science-dependency==1\\n"
+        assert (root / ".teal").is_dir()
+        assert calls == ["lock"]
+        window._dashboard.close()
+        window.open_project_path(str(root))
+        assert calls == ["lock"]
+        window._dashboard.close()
+    finally:
+        window.close()
+
+
 def test_open_python_created_teal_project_selects_workspace_without_descriptor(
     tmp_path, monkeypatch,
 ):
