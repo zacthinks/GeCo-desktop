@@ -386,7 +386,6 @@ def test_first_open_resolves_new_project_lock_once_and_preserves_it(
     tmp_path, monkeypatch,
 ):
     qtwidgets = pytest.importorskip("PySide6.QtWidgets")
-    from geco_desktop.environments import EnvironmentError
     from geco_desktop.portable_project import LockedProjectFiles
     from geco_desktop.project import (
         ProjectDescriptor, RuntimeSpec, read_descriptor, write_descriptor,
