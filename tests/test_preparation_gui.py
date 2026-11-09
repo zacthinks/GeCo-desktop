@@ -29,6 +29,42 @@ def test_native_wizard_can_construct_and_switch_parameter_sections(tmp_path):
 
 
 
+def test_create_new_project_never_runs_uv_before_first_open(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    qtwidgets = pytest.importorskip("PySide6.QtWidgets")
+    from geco_desktop.project import read_descriptor
+    from geco_desktop.ui import preparation
+
+    app = qtwidgets.QApplication.instance() or qtwidgets.QApplication([])
+    assert app is not None
+
+    def forbidden(*_args, **_kwargs):
+        raise AssertionError("Creating a project must not invoke uv")
+
+    class DirectPool:
+        @staticmethod
+        def globalInstance():
+            return SimpleNamespace(start=lambda job: job.run())
+
+    monkeypatch.setattr(preparation, "QThreadPool", DirectPool)
+    monkeypatch.setattr(preparation, "resolve_project_files", forbidden)
+    dialog = preparation.NewProjectDialog(object())
+    dialog.project_name.setText("Instant study")
+    dialog.destination.setText(str(tmp_path))
+    try:
+        dialog.create_project()
+        root = tmp_path / "Instant study.gecod"
+        assert root.is_dir()
+        assert (root / "project.gecod").is_file()
+        assert not (root / "uv.lock").exists()
+        assert not (root / "pyproject.toml").exists()
+        assert not (root / ".teal").exists()
+        assert read_descriptor(root)[1].state == "preparing"
+    finally:
+        dialog.close()
+
+
 def test_new_project_dialog_only_asks_for_name_location_and_profile():
     qtwidgets = pytest.importorskip("PySide6.QtWidgets")
     from geco_desktop.ui.preparation import NewProjectDialog
