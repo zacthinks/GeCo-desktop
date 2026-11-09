@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import csv
 import json
+import os
 import platform
 import shutil
 import tempfile
@@ -28,6 +29,16 @@ def qualify() -> None:
     with tempfile.TemporaryDirectory(prefix="gecod-qualified-") as temporary:
         base = Path(temporary)
         manager = EnvironmentManager(base=base / "software", uv=uv)
+        if platform.system() == "Windows":
+            # Simulate a poisoned user roaming uv location, like WinError 448,
+            # while actually resolving/installing the full scientific profile.
+            os.environ["UV_DATA_DIR"] = str(base / "roaming-uv")
+            os.environ["UV_PYTHON_INSTALL_DIR"] = str(
+                base / "roaming-uv" / "python"
+            )
+            assert manager._uv_environment()["UV_PYTHON_INSTALL_DIR"] == str(
+                manager.base / "uv-data" / "python"
+            )
         spec = RuntimeSpec(
             DEFAULT_PYTHON, TEAL.version, GECO.version,
             locked_packages=(
