@@ -1,12 +1,11 @@
 """Native project creation and TeAL preparation, without scientific imports in Qt.
 
 A small workbench with explicit Apply and Preview: scientific state is always
-owned by TeAL, and new projects also carry ordinary pyproject.toml/uv.lock scientific metadata.
+owned by TeAL. Portable scientific locks are resolved on first project opening.
 """
 from __future__ import annotations
 
 import platform
-import tomllib
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -40,10 +39,7 @@ from geco_desktop.environments import (
     run_command,
     runtime_with_features,
 )
-from geco_desktop.portable_project import (
-    project_files_from_profile,
-    resolve_project_files,
-)
+from geco_desktop.portable_project import resolve_project_files
 from geco_desktop.profile_catalog import ProfileCatalog
 from geco_desktop.project import ProjectDescriptor, RuntimeSpec, write_descriptor
 from geco_desktop.science_releases import DEFAULT_PYTHON, GECO, TEAL
