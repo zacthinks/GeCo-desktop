@@ -38,6 +38,7 @@ class ActiveSession:
     runner_path: str
     shutdown_file: str = ""
     status: str = "running"
+    workspace_name: str = "desktop"
 
     @property
     def url(self) -> str:
@@ -134,11 +135,17 @@ class SessionManager:
     def start(
         self, root: Path, descriptor: ProjectDescriptor, python: Path, *,
         runner: Path | None = None, wait_seconds: float = 20.0,
+        workspace: str | None = None,
     ) -> ActiveSession:
         self.base.mkdir(parents=True, exist_ok=True)
         root = root.resolve()
         runner = (runner or installed_runner_path()).resolve()
-        key = _identity(root, descriptor.project_id)
+        selected_workspace = workspace or descriptor.workspace_name
+        # Existing Desktop sessions retain their historical keys.
+        identity = descriptor.project_id
+        if selected_workspace != descriptor.workspace_name:
+            identity += ":" + selected_workspace
+        key = _identity(root, identity)
         with FileLock(str(self.lock)):
             sessions = self._read()
             existing = sessions.get(key)
@@ -151,10 +158,11 @@ class SessionManager:
             log_dir.mkdir(exist_ok=True)
             flags = 0
             if os.name == "nt":
-                flags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
+                flags = (subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
+                         | subprocess.CREATE_NO_WINDOW)
             command = [
                 str(python), str(runner), "--serve", "--project", str(root),
-                "--workspace", descriptor.workspace_name, "--port", str(port),
+                "--workspace", selected_workspace, "--port", str(port),
                 "--shutdown-file", str(shutdown_file),
             ]
             with (log_dir / f"{key}.log").open("ab") as output:
@@ -169,6 +177,7 @@ class SessionManager:
                 project_name=descriptor.name, pid=process.pid,
                 process_created=psutil.Process(process.pid).create_time(),
                 port=port, runner_path=str(runner), shutdown_file=str(shutdown_file),
+                workspace_name=selected_workspace,
             )
             sessions[key] = item
             self._write(sessions)
