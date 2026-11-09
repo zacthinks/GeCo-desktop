@@ -15,6 +15,63 @@ from geco_desktop.environments import (
 from geco_desktop.project import RuntimeSpec
 
 
+def test_windows_uv_python_is_isolated_from_broken_roaming_mounts(tmp_path, monkeypatch):
+    """No uv command should inspect the user's roaming managed Python tree."""
+    import os
+    from types import SimpleNamespace
+
+    import geco_desktop.environments as environments
+
+    monkeypatch.setattr(environments.platform, "system", lambda: "Windows")
+    monkeypatch.setenv("UV_DATA_DIR", r"C:\\Users\\broken\\AppData\\Roaming\\uv")
+    monkeypatch.setenv(
+        "UV_PYTHON_INSTALL_DIR",
+        r"C:\\Users\\broken\\AppData\\Roaming\\uv\\python",
+    )
+    manager = EnvironmentManager(base=tmp_path / "GeCo Desktop", uv="uv")
+    seen = []
+
+    def fake_run(command, **kwargs):
+        seen.append((command, kwargs))
+        return SimpleNamespace(returncode=0, stderr="", stdout="")
+
+    monkeypatch.setattr(environments.subprocess, "run", fake_run)
+    manager._uv("python", "dir")
+    assert len(seen) == 1
+    command, kwargs = seen[0]
+    assert command == ["uv", "python", "dir"]
+    assert kwargs["env"]["UV_DATA_DIR"] == str(manager.base / "uv-data")
+    assert kwargs["env"]["UV_PYTHON_INSTALL_DIR"] == str(
+        manager.base / "uv-data" / "python"
+    )
+    assert kwargs["env"]["UV_PYTHON_BIN_DIR"] == str(
+        manager.base / "uv-data" / "bin"
+    )
+    assert os.environ["UV_DATA_DIR"].endswith(r"Roaming\\uv")
+    assert os.environ["UV_PYTHON_INSTALL_DIR"].endswith(r"Roaming\\uv\\python")
+
+
+def test_nonwindows_uv_preserves_user_environment(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    import geco_desktop.environments as environments
+
+    monkeypatch.setattr(environments.platform, "system", lambda: "Darwin")
+    monkeypatch.setenv("UV_PYTHON_INSTALL_DIR", "/tmp/user-managed-python")
+    manager = EnvironmentManager(base=tmp_path, uv="uv")
+    seen = []
+    monkeypatch.setattr(
+        environments.subprocess, "run",
+        lambda command, **kwargs: (
+            seen.append(kwargs) or SimpleNamespace(
+                returncode=0, stderr="", stdout=""
+            )
+        ),
+    )
+    manager._uv("python", "dir")
+    assert seen[0]["env"]["UV_PYTHON_INSTALL_DIR"] == "/tmp/user-managed-python"
+
+
 def test_profile_reuse_and_exact_manifest(tmp_path):
     manager = EnvironmentManager(base=tmp_path, uv="uv")
     spec = RuntimeSpec("3.11", "0.9.0", "0.8.15")
