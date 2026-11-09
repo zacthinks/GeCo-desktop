@@ -316,6 +316,7 @@ class MainWindow(QMainWindow):
             if (
                 descriptor.state == "preparing"
                 and descriptor.project_lock_sha256 is None
+                and bool(descriptor.runtime.locked_packages)
                 and not (root / ".teal").exists()
                 and not (root / "pyproject.toml").exists()
                 and not (root / "uv.lock").exists()
