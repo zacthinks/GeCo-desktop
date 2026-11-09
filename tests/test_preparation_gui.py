@@ -386,13 +386,16 @@ def test_first_open_resolves_new_project_lock_once_and_preserves_it(
     tmp_path, monkeypatch,
 ):
     qtwidgets = pytest.importorskip("PySide6.QtWidgets")
-    from geco_desktop.portable_project import LockedProjectFiles
-    from geco_desktop.project import (
-        ProjectDescriptor, RuntimeSpec, read_descriptor, write_descriptor,
-    )
-    from geco_desktop.ui.main_window import MainWindow
     import geco_desktop.environments as env_module
     import geco_desktop.portable_project as portable
+    from geco_desktop.portable_project import LockedProjectFiles
+    from geco_desktop.project import (
+        ProjectDescriptor,
+        RuntimeSpec,
+        read_descriptor,
+        write_descriptor,
+    )
+    from geco_desktop.ui.main_window import MainWindow
 
     app = qtwidgets.QApplication.instance() or qtwidgets.QApplication([])
     assert app is not None
