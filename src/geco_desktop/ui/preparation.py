@@ -240,11 +240,12 @@ class NewProjectDialog(QDialog):
             return
         entry = self.profile_choices.currentData()
         self.setEnabled(False)
-        self.status.setText("Creating portable project files…")
+        self.status.setText("Saving project…")
 
         def work():
             if entry is None:
-                # Explicitly unapproved source for native acceptance testing only.
+                # Creating a project must not invoke uv or contact a registry.
+                # Its pinned scientific source is resolved when first opened.
                 spec = RuntimeSpec(
                     DEFAULT_PYTHON, TEAL.version, GECO.version,
                     locked_packages=(
@@ -252,27 +253,21 @@ class NewProjectDialog(QDialog):
                         f"geometric-coder=={GECO.version}",
                     ),
                 )
-                files = resolve_project_files(self.environments, name, spec)
             else:
-                # Consume the immutable, digest-verified catalog manifest as-is:
-                # do not independently re-resolve a chosen approved profile.
-                manifest = self.catalog.manifest(entry, refresh=True)
-                packages = tuple(
-                    tomllib.loads(manifest.pyproject)["project"]["dependencies"]
-                )
+                # Persist a catalog identity now; load its verified immutable
+                # manifest and lock only on first opening.
                 spec = RuntimeSpec(
-                    entry.python, entry.teal, entry.geco, locked_packages=packages
+                    entry.python, entry.teal, entry.geco,
+                    locked_packages=(
+                        f"text-analysis-lab=={entry.teal}",
+                        f"geometric-coder=={entry.geco}",
+                    ),
                 )
-                files = project_files_from_profile(self.environments, manifest)
-            locked_spec = replace(spec, resolved_requirements=files.requirements)
             root.mkdir(parents=True, exist_ok=False)
-            files.write(root)
             descriptor = ProjectDescriptor.new(
-                name, locked_spec, project_lock_sha256=files.digest,
-                profile_id=entry.id if entry is not None else None,
+                name, spec, profile_id=entry.id if entry is not None else None,
             )
             write_descriptor(root, descriptor)
-            # Runtime installation and TeAL initialization happen on first open.
             return str(root)
         job = _Work(work)
         self._jobs.append(job)
