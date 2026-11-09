@@ -309,10 +309,62 @@ class MainWindow(QMainWindow):
         ):
             self._open_external_teal(root_path)
             return
-        self.status.setText("Opening GeCo project…")
+        self.status.setText("Opening project; first-time scientific setup may take a while…")
 
         def work():
             root, descriptor = read_descriptor(Path(path))
+            if (
+                descriptor.state == "preparing"
+                and descriptor.project_lock_sha256 is None
+                and not (root / ".teal").exists()
+                and not (root / "pyproject.toml").exists()
+                and not (root / "uv.lock").exists()
+            ):
+                # A new project is just a saved document until first opened.
+                # Do not modify pre-existing projects or re-resolve existing locks.
+                from geco_desktop.portable_project import (
+                    project_files_from_profile,
+                    resolve_project_files,
+                )
+                if descriptor.profile_id is None:
+                    files = resolve_project_files(
+                        self.environments, descriptor.name, descriptor.runtime
+                    )
+                    spec = descriptor.runtime
+                else:
+                    from geco_desktop.environments import application_data
+                    from geco_desktop.profile_catalog import ProfileCatalog
+
+                    catalog = ProfileCatalog(application_data() / "profiles")
+                    entry = next(
+                        (item for item in catalog.list()
+                         if item.id == descriptor.profile_id), None
+                    )
+                    if entry is None:
+                        raise EnvironmentError(
+                            "The selected Software Profile is not in the local catalog. "
+                            "Refresh software profiles before opening this project."
+                        )
+                    manifest = catalog.manifest(entry, refresh=True)
+                    packages = tuple(
+                        tomllib.loads(manifest.pyproject)["project"]["dependencies"]
+                    )
+                    spec = RuntimeSpec(
+                        entry.python, entry.teal, entry.geco,
+                        locked_packages=packages,
+                    )
+                    files = project_files_from_profile(self.environments, manifest)
+                locked = replace(
+                    spec, resolved_requirements=files.requirements
+                )
+                files.write(root)
+                descriptor = replace(
+                    descriptor, runtime=locked,
+                    project_lock_sha256=files.digest,
+                )
+                from geco_desktop.project import write_descriptor
+
+                write_descriptor(root, descriptor, replace=True)
             try:
                 interpreter = self.environments.locate(descriptor.runtime)
             except EnvironmentError:
