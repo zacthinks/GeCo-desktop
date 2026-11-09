@@ -311,9 +311,27 @@ class EnvironmentManager:
                 records.append({"path": str(location), "state": "invalid"})
         return records
 
+    def _uv_environment(self) -> dict[str, str]:
+        """Keep managed Python away from Windows' roaming reparse points.
+
+        Some Windows installations reject the minor-version junctions in
+        %APPDATA%\\uv\\python with ERROR_UNTRUSTED_MOUNT_POINT (448). The
+        native app already stores scientific environments in LOCALAPPDATA;
+        manage its uv Pythons alongside those profiles. This affects only
+        child uv processes, never the user's existing global uv installation.
+        """
+        env = os.environ.copy()
+        if platform.system() == "Windows":
+            uv_data = self.base / "uv-data"
+            env["UV_DATA_DIR"] = str(uv_data)
+            env["UV_PYTHON_INSTALL_DIR"] = str(uv_data / "python")
+            env["UV_PYTHON_BIN_DIR"] = str(uv_data / "bin")
+        return env
+
     def _uv(self, *args: str) -> None:
         result = subprocess.run(
             [str(self.uv), *args], capture_output=True, text=True, check=False,
+            env=self._uv_environment(),
             **_hidden_console_kwargs()
         )
         if result.returncode:
